@@ -21,6 +21,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Ship the supplied brand images with the admin server functions (Settings → Import starter images).
+  outputFileTracingIncludes: { "/admin/settings": ["./seed-assets/**/*"], "/admin/**": ["./seed-assets/**/*"] },
   reactStrictMode: true,
   async headers() {
     return [

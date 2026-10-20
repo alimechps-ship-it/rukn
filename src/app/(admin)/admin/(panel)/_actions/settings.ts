@@ -239,3 +239,16 @@ export async function updateOwnAccount(_: ActionResult, fd: FormData): Promise<A
     return { ok: true, message: "Profile updated." };
   } catch (e) { return fail(e); }
 }
+
+// ---- Starter images ------------------------------------------------------------
+export async function importStarterImages(_: ActionResult, _fd: FormData): Promise<ActionResult> {
+  try {
+    const admin = await assertStaff(can.admin);
+    const db = await createSessionClient();
+    const { importStarterMedia } = await import("@/lib/starter-media");
+    const r = await importStarterMedia(db as never, admin.id);
+    revalidateSite();
+    const base = `Done: ${r.imported} image(s) imported, ${r.reused} already in the library. Images are attached to the logo, services and home page.`;
+    return { ok: r.warnings.length === 0, message: r.warnings.length ? `${base} Warnings: ${r.warnings.join(" | ")}` : base };
+  } catch (e) { return fail(e); }
+}

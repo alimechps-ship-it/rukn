@@ -4,9 +4,11 @@ import { LocaleTabs } from "@/components/admin/LocaleTabs";
 import { MediaPicker } from "@/components/admin/MediaPicker";
 import { can, requireStaff } from "@/lib/auth";
 import { allLanguages, createSessionClient, pickerMedia } from "@/lib/admin";
-import { addLanguage, saveGeneralSettings, saveNotifications, saveSiteTexts, updateLanguage } from "../_actions/settings";
+import { ConfirmAction } from "@/components/admin/ConfirmAction";
+import { addLanguage, importStarterImages, saveGeneralSettings, saveNotifications, saveSiteTexts, updateLanguage } from "../_actions/settings";
 
 export const metadata = { title: "Settings" };
+export const maxDuration = 300;
 
 export default async function Settings() {
   const user = await requireStaff(can.translate);
@@ -28,6 +30,19 @@ export default async function Settings() {
   return (
     <>
       <div className="topbar"><div><h1>Settings</h1><div className="sub">{isAdmin ? "Site-wide configuration." : "You can edit the site texts for your permitted languages. Other settings are managed by a Super Administrator."}</div></div></div>
+
+      {isAdmin ? (
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2 style={{ margin: 0 }}>Starter images</h2>
+              <p className="small muted" style={{ margin: "6px 0 0" }}>Imports the supplied RUKN logo and product images into the media library and attaches them to the logo, favicon, services and home page. Existing choices are never overwritten; safe to run again.</p>
+            </div>
+            <ConfirmAction action={importStarterImages} small={false} label="Import starter images" title="Import starter images?"
+              message="14 images are optimised and uploaded. This takes about 1–2 minutes — keep this page open until the message appears." confirmLabel="Import" />
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel">
         <h2>Site texts (per language)</h2>

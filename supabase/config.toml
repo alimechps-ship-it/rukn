@@ -1,0 +1,19 @@
+# Minimal Supabase CLI configuration (used by `supabase link` / `supabase db push`).
+project_id = "rukn"
+
+[db]
+major_version = 15
+
+[auth]
+# Update after deployment / when the domain is connected (see README → Domain).
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/admin/auth/confirm", "http://localhost:3000/admin/auth/callback"]
+# Accounts are created by invitation only.
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+
+[storage]
+file_size_limit = "15MiB"

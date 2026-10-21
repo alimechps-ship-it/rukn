@@ -39,7 +39,7 @@ export default async function MediaLibrary({ searchParams }: { searchParams: Pro
                   <div className="meta">
                     <strong>{m.filename}</strong>
                     {m.category} · {m.width}×{m.height}
-                    <div>{m.is_brand_asset ? <span className="pill">brand</span> : null} {m.is_illustrative ? <span className="pill">illustrative</span> : null} {missingAlt ? <span className="pill draft">alt text missing</span> : null}</div>
+                    <div>{m.is_brand_asset ? <span className="pill">brand</span> : null} {missingAlt ? <span className="pill draft">alt text missing</span> : null}</div>
                   </div>
                 </Link>
               );

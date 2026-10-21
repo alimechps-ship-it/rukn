@@ -16,7 +16,7 @@ export function MediaUploader({ replaceId }: { replaceId?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [category, setCategory] = useState("general");
-  const [illustrative, setIllustrative] = useState(false);
+  const illustrative = false;
   const [busy, setBusy] = useState(false);
   const router = useRouter();
 
@@ -59,7 +59,6 @@ export function MediaUploader({ replaceId }: { replaceId?: string }) {
               <label htmlFor="up-cat">Category</label>
               <select id="up-cat" value={category} onChange={(e) => setCategory(e.target.value)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
             </div>
-            <div className="field"><label>&nbsp;</label><label className="check"><input type="checkbox" checked={illustrative} onChange={(e) => setIllustrative(e.target.checked)} /> Mark as illustrative (not a real product / patient photo)</label></div>
           </>
         ) : null}
         <div className="field full">

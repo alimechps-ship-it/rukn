@@ -59,7 +59,6 @@ export default async function MediaDetail({ params }: { params: Promise<{ id: st
               <Text name="filename" label="File name" defaultValue={m.filename} maxLength={200} full />
               <Select name="category" label="Category" defaultValue={m.category} options={CATS.map((c) => ({ value: c, label: c }))} />
               <div />
-              <Check name="is_illustrative" label="Illustrative image" defaultChecked={m.is_illustrative} hint="Shows a small “Illustrative image” label on the website. Use for renders/AI images that are not real RUKN products or patient results." />
               <Check name="is_brand_asset" label="Brand asset (logo etc.)" defaultChecked={m.is_brand_asset} />
               {langs.map((l) => {
                 const t = (m.media_asset_translations ?? []).find((x) => x.locale === l.code);

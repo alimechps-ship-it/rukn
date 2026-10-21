@@ -101,7 +101,7 @@ export async function saveMedia(id: string, _: ActionResult, fd: FormData): Prom
       if (!filename) return { ok: false, message: "File name is required." };
       const { error } = await db.from("media_assets").update({
         filename, category: CATEGORIES.includes(category) ? category : "general",
-        is_illustrative: bool(fd, "is_illustrative"), is_brand_asset: bool(fd, "is_brand_asset"),
+        is_illustrative: false, is_brand_asset: bool(fd, "is_brand_asset"),
       }).eq("id", id);
       if (error) return { ok: false, message: errMessage(error) };
     }

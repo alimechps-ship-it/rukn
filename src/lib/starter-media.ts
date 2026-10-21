@@ -63,7 +63,7 @@ export async function importStarterMedia(db: SupabaseClient, userId: string): Pr
     const { error } = await db.from("media_assets").insert({
       id, path: `${folder}/full.webp`, variants, filename: a.file, mime_type: "image/webp", size_bytes: full.data.length,
       width: full.info.width, height: full.info.height, category: a.category, is_brand_asset: Boolean(a.brand),
-      is_illustrative: a.illustrative ?? true, uploaded_by: userId,
+      is_illustrative: false, uploaded_by: userId,
     });
     if (error) throw new Error(`${a.file}: ${error.message}`);
     await db.from("media_asset_translations").insert([

@@ -2,7 +2,7 @@ import type { Media } from "@/lib/types";
 
 /** Responsive, lazy-loaded image. Renders a neutral placeholder when no media is set. */
 export function Picture({
-  media, sizes = "100vw", priority = false, illustrativeLabel, className,
+  media, sizes = "100vw", priority = false, className,
 }: { media: Media | null; sizes?: string; priority?: boolean; illustrativeLabel?: string; className?: string }) {
   if (!media) {
     return (
@@ -26,7 +26,6 @@ export function Picture({
         decoding="async"
         className={className}
       />
-      {media.isIllustrative && illustrativeLabel ? <span className="illustrative">{illustrativeLabel}</span> : null}
     </>
   );
 }

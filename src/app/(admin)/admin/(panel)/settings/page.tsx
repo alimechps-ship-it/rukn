@@ -36,7 +36,7 @@ export default async function Settings() {
           <div className="panel-head">
             <div>
               <h2 style={{ margin: 0 }}>Starter images</h2>
-              <p className="small muted" style={{ margin: "6px 0 0" }}>Imports the supplied RUKN logo and product images into the media library and attaches them to the logo, favicon, services and home page. Existing choices are never overwritten; safe to run again.</p>
+              <p className="small muted" style={{ margin: "6px 0 0" }}>Imports the supplied RUKN logo and product images into the media library and attaches them to the logo, services and home page. Existing choices are never overwritten; safe to run again.</p>
             </div>
             <ConfirmAction action={importStarterImages} small={false} label="Import starter images" title="Import starter images?"
               message="14 images are optimised and uploaded. This takes about 1–2 minutes — keep this page open until the message appears." confirmLabel="Import" />
@@ -87,9 +87,7 @@ export default async function Settings() {
               <div />
               <TextArea name="social_links" label="Social media links (one per line — a link, or Name | link)" defaultValue={social} rows={3} />
               <div className="field"><label>Logo</label><MediaPicker name="logo_media_id" media={media} value={s.logo_media_id} /><div className="hint">The official RUKN logo from the media library (category “brand”).</div></div>
-              <div className="field"><label>Favicon</label><MediaPicker name="favicon_media_id" media={media} value={s.favicon_media_id} /><div className="hint">Square image. A built-in favicon is used while empty.</div></div>
-              <div className="field full"><label>Default social share image</label><MediaPicker name="og_image_media_id" media={media} value={s.og_image_media_id} /></div>
-            </div>
+                                        </div>
             <h3 style={{ marginTop: 16 }}>Brand colours</h3>
             <div className="form-grid" style={{ gridTemplateColumns: "repeat(5, minmax(0,1fr))" }}>
               {["navy", "teal", "white", "light", "text"].map((k) => <Text key={k} name={`color_${k}`} label={k} defaultValue={colors[k]} maxLength={7} />)}

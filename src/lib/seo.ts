@@ -14,7 +14,8 @@ export function buildMetadata(
   languages["x-default"] = `${origin}/${site.defaultLocale}${path}`;
   const title = opts.title || site.settingsTr.default_seo_title || site.settings.site_name;
   const description = opts.description || site.settingsTr.default_seo_description || undefined;
-  const image = opts.image ?? site.settings.ogImage;
+  const origin_ = siteOrigin(site.settings.site_url);
+  const image = opts.image ?? { id: "default", src: `${origin_}/og-image.jpg`, srcSet: "", width: 1200, height: 630, alt: site.settings.site_name, caption: null, isIllustrative: false };
   return {
     metadataBase: new URL(origin),
     title: { absolute: title },

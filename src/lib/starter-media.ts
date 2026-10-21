@@ -83,8 +83,9 @@ export async function importStarterMedia(db: SupabaseClient, userId: string): Pr
   const { data: s } = await db.from("site_settings").select("logo_media_id,favicon_media_id,og_image_media_id").eq("id", 1).maybeSingle();
   await must(db.from("site_settings").update({
     logo_media_id: s?.logo_media_id ?? ids.logo ?? null,
-    favicon_media_id: s?.favicon_media_id ?? ids.mark ?? null,
-    og_image_media_id: s?.og_image_media_id ?? ids.showcase ?? null,
+    // Favicon and share image use the built-in icon set in /public unless chosen manually.
+    favicon_media_id: s?.favicon_media_id ?? null,
+    og_image_media_id: s?.og_image_media_id ?? null,
   }).eq("id", 1), "settings");
 
   // Services

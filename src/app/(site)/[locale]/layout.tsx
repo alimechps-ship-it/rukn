@@ -25,14 +25,21 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const { locale } = await params;
   const site = await getSite(locale);
   if (!site) return {};
-  const fav = site.settings.favicon?.src;
   return {
     metadataBase: new URL(siteOrigin(site.settings.site_url)),
     applicationName: site.settings.site_name,
+    manifest: "/site.webmanifest",
     icons: {
-      icon: fav ? [{ url: fav }] : [{ url: "/favicon-32.png", sizes: "32x32", type: "image/png" }, { url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
-      apple: "/apple-touch-icon.png",
+      // Official RUKN icon set (public/) — generated from the brand logo.
+      icon: [
+        { url: "/favicon.ico", sizes: "48x48" },
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+        { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      ],
+      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
     },
+    other: { "msapplication-config": "/browserconfig.xml", "msapplication-TileColor": "#10263D" },
   };
 }
 

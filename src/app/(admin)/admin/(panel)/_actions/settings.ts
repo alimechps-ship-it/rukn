@@ -52,8 +52,6 @@ export async function saveGeneralSettings(_: ActionResult, fd: FormData): Promis
       site_url: siteUrl ? siteUrl.replace(/\/$/, "") : null,
       country_code: /^[A-Z]{2}$/.test(country) ? country : "EG",
       logo_media_id: str(fd, "logo_media_id") || null,
-      favicon_media_id: str(fd, "favicon_media_id") || null,
-      og_image_media_id: str(fd, "og_image_media_id") || null,
       contact_email: email,
       whatsapp_number: wa,
       social_links: social,

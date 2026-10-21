@@ -85,7 +85,7 @@ export default async function ServicePage({ params }: P) {
       {svc.gallery.length ? (
         <section className="section alt">
           <div className="container">
-            <div className="gallery">
+            <div className={`gallery n-${Math.min(svc.gallery.length, 6)}`}>
               {svc.gallery.map((m) => <figure key={m.id}><Picture media={m} sizes="(max-width: 760px) 100vw, 66vw" illustrativeLabel={ill} /></figure>)}
             </div>
           </div>

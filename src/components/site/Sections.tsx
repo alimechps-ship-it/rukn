@@ -208,7 +208,7 @@ async function SectionView({ s, ctx, index }: { s: Section; ctx: Ctx; index: num
         <section className={`section${index % 2 ? " alt" : ""}`}>
           <div className="container">
             <Head s={s} />
-            <div className="gallery">
+            <div className={`gallery n-${Math.min(media.length, 6)}`}>
               {media.map((m) => (
                 <figure key={m.id}>
                   <Picture media={m} sizes="(max-width: 760px) 100vw, 66vw" illustrativeLabel={ill} />

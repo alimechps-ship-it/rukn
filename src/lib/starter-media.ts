@@ -28,6 +28,7 @@ const ASSETS: Asset[] = [
   { key: "retainer2", file: "crop_retainer_quadrant.png", category: "retainers", alt: ["Clear trays with a navy storage case on marble", "قوالب شفافة مع علبة حفظ كحلية على سطح رخامي"] },
   { key: "teal", file: "RUKN_Clear_Aligners_in_Teal_Studio_Light-3.png", category: "aligners", alt: ["Clear aligners on a navy background with a teal accent", "مصففات شفافة على خلفية كحلية مع لمسة فيروزية"] },
   { key: "snapon", file: "crop_snapon_quadrant.png", category: "snap-on", alt: ["Removable aesthetic dental appliance next to a dental model", "جهاز سني تجميلي متحرك بجانب نموذج أسنان"] },
+  { key: "hero", file: "RUKN_Hero.jpg", category: "general", max: 1800, alt: ["Digital treatment planning on a laptop with clear aligners and a removable aesthetic appliance", "تخطيط علاجي رقمي على حاسوب محمول مع مصففات شفافة وجهاز تجميلي متحرك"] },
   { key: "showcase", file: "RUKN_Dental_Technology_Showcase-1.png", category: "general", alt: ["Overview of digital planning, clear aligners, retainers and aesthetic appliances", "نظرة عامة على التخطيط الرقمي والمصففات والمثبتات والأجهزة التجميلية"] },
 ];
 
@@ -110,7 +111,8 @@ export async function importStarterMedia(db: SupabaseClient, userId: string): Pr
     const { data: secs } = await db.from("content_sections").select("id,key,media_id,settings").eq("page_id", home.id);
     const sec = (k: string) => secs?.find((x) => x.key === k);
     const hero = sec("hero");
-    if (hero && !hero.media_id && ids.planning) await must(db.from("content_sections").update({ media_id: ids.planning }).eq("id", hero.id), "home/hero");
+    // The designed hero image replaces an empty slot or the earlier starter photo, never a custom choice.
+    if (hero && ids.hero && (!hero.media_id || hero.media_id === ids.planning)) await must(db.from("content_sections").update({ media_id: ids.hero }).eq("id", hero.id), "home/hero");
     const about = sec("about-summary");
     if (about && !about.media_id && ids.teal) await must(db.from("content_sections").update({ media_id: ids.teal }).eq("id", about.id), "home/about-summary");
     const gal = sec("gallery");

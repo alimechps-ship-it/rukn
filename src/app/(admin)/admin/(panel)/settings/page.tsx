@@ -39,7 +39,7 @@ export default async function Settings() {
               <p className="small muted" style={{ margin: "6px 0 0" }}>Imports the supplied RUKN logo and product images into the media library and attaches them to the logo, services and home page. Existing choices are never overwritten; safe to run again.</p>
             </div>
             <ConfirmAction action={importStarterImages} small={false} label="Import starter images" title="Import starter images?"
-              message="14 images are optimised and uploaded. This takes about 1–2 minutes — keep this page open until the message appears." confirmLabel="Import" />
+              message="15 images are optimised and uploaded. This takes about 1–2 minutes — keep this page open until the message appears." confirmLabel="Import" />
           </div>
         </section>
       ) : null}

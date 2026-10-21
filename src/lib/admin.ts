@@ -83,7 +83,7 @@ export function hasPendingChanges(rows: Record<string, unknown>[], fields: strin
 }
 
 export const SECTION_TR_FIELDS = ["eyebrow", "heading", "subheading", "body", "items", "primary_label", "primary_href", "secondary_label", "secondary_href"];
-export const SERVICE_TR_FIELDS = ["title", "nav_title", "summary", "description", "features_heading", "features", "workflow_heading", "workflow", "notice", "cta_label", "price_note", "seo_title", "seo_description"];
+export const SERVICE_TR_FIELDS = ["title", "nav_title", "summary", "description", "features_heading", "features", "workflow_heading", "workflow", "notice", "cta_label", "price_note", "seo_title", "seo_description", "why_heading", "why_patients", "why_clinicians"];
 export const PAGE_TR_FIELDS = ["title", "seo_title", "seo_description"];
 
 export function fmtDate(v: string | null | undefined) {

@@ -3,6 +3,14 @@
 import { assertStaff, can } from "@/lib/auth";
 import { allLanguages, bool, createSessionClient, errMessage, int, json, lines, revalidateSite, safeHref, slugify, str } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
+import { ITEM_ICON_KEYS } from "@/components/icons";
+
+function whyItems(fd: FormData, key: string) {
+  return json<{ title?: string; text?: string; icon?: string }[]>(fd, key, []).slice(0, 12).map((i) => ({
+    title: String(i.title ?? "").slice(0, 200), text: String(i.text ?? "").slice(0, 1000),
+    ...(i.icon && ITEM_ICON_KEYS.includes(i.icon) ? { icon: i.icon } : {}),
+  }));
+}
 
 function fail(e: unknown): ActionResult {
   return { ok: false, message: e instanceof Error ? e.message : "Unexpected error." };
@@ -76,7 +84,9 @@ export async function saveService(serviceId: string, _: ActionResult, fd: FormDa
         workflow_heading: p("workflow_heading", 160),
         workflow: json<{ title?: string; text?: string }[]>(fd, `tr.${l.code}.workflow`, []).slice(0, 20).map((i) => ({ title: String(i.title ?? "").slice(0, 200), text: String(i.text ?? "").slice(0, 1000) })),
         notice: p("notice", 600), cta_label: p("cta_label", 80), price_note: p("price_note", 200),
-        seo_title: p("seo_title", 120), seo_description: p("seo_description", 320), updated_by: user.id,
+        seo_title: p("seo_title", 120), seo_description: p("seo_description", 320),
+        why_heading: p("why_heading", 160), why_patients: whyItems(fd, `tr.${l.code}.why_patients`), why_clinicians: whyItems(fd, `tr.${l.code}.why_clinicians`),
+        updated_by: user.id,
       });
       if (error) return { ok: false, message: `${l.name}: ${errMessage(error)}` };
     }

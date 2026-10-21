@@ -25,7 +25,8 @@ export default async function EditService({ params }: { params: Promise<{ id: st
   if (!s || s.deleted_at) notFound();
   const canEdit = can.content(user);
   const trs = s.service_translations as Record<string, unknown>[];
-  type Tr = Record<string, string | null> & { features?: string[]; workflow?: { title: string; text: string }[] };
+  type It = { title: string; text: string; icon?: string };
+  type Tr = Record<string, string | null> & { features?: string[]; workflow?: It[]; why_patients?: It[]; why_clinicians?: It[] };
   const draft = (code: string) => trs.find((t) => t.locale === code && t.variant === "draft") as Tr | undefined;
   const pending = s.status === "published" && hasPendingChanges(trs, SERVICE_TR_FIELDS);
   const def = langs.find((l) => l.is_default)?.code ?? "en";
@@ -87,6 +88,9 @@ export default async function EditService({ params }: { params: Promise<{ id: st
                   <TextArea name={n("features")} label="Features (one per line)" defaultValue={(t?.features ?? []).join("\n")} dir={l.dir} disabled={locked} rows={6} />
                   <Text name={n("workflow_heading")} label="Workflow heading" defaultValue={t?.workflow_heading} dir={l.dir} disabled={locked} maxLength={160} full />
                   <div className="field full"><label>Workflow steps</label><ItemsEditor name={n("workflow")} initial={(t?.workflow ?? []).map((w) => ({ title: w.title ?? "", text: w.text ?? "" }))} dir={l.dir} disabled={locked} /></div>
+                  <Text name={n("why_heading")} label="“Why this service” heading" defaultValue={t?.why_heading} dir={l.dir} disabled={locked} maxLength={160} full />
+                  <div className="field full"><label>Why — for patients</label><ItemsEditor name={n("why_patients")} initial={(t?.why_patients ?? []).map((w) => ({ title: w.title ?? "", text: w.text ?? "", icon: w.icon }))} dir={l.dir} disabled={locked} withIcons /></div>
+                  <div className="field full"><label>Why — for dentists &amp; orthodontists</label><ItemsEditor name={n("why_clinicians")} initial={(t?.why_clinicians ?? []).map((w) => ({ title: w.title ?? "", text: w.text ?? "", icon: w.icon }))} dir={l.dir} disabled={locked} withIcons /></div>
                   <TextArea name={n("notice")} label="Availability / suitability notice" defaultValue={t?.notice} dir={l.dir} disabled={locked} maxLength={600} rows={3} />
                   <Text name={n("cta_label")} label="Button label" defaultValue={t?.cta_label} dir={l.dir} disabled={locked} maxLength={80} />
                   <Text name={n("price_note")} label="Price note (if price shown)" defaultValue={t?.price_note} dir={l.dir} disabled={locked} maxLength={200} />

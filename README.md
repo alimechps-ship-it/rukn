@@ -73,7 +73,7 @@ npm run dev                     # http://localhost:3000  (admin: /admin)
 1. Create a project at <https://supabase.com> (choose an EU region close to Egypt, e.g. Frankfurt).
 2. **Apply the database migrations** — either
    - CLI: `npx supabase login && npx supabase link --project-ref <ref> && npx supabase db push`, or
-   - Dashboard → SQL Editor: run the four files in `supabase/migrations/` **in order**.
+   - Dashboard → SQL Editor: run all files in `supabase/migrations/` **in order** (by file name).
 3. **Authentication → Sign In / Providers → Email:** keep e-mail enabled, **turn OFF “Allow new users to sign up”**.
 4. **Authentication → URL Configuration:**
    - Site URL: your deployment URL (e.g. `https://rukn.vercel.app`), later your domain.

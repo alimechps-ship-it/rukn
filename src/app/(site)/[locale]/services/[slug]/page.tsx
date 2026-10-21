@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Picture } from "@/components/site/Picture";
-import { Check, Info, serviceIcon } from "@/components/icons";
+import { Check, Info, itemIcon, serviceIcon } from "@/components/icons";
+import { Stethoscope, UserRound } from "lucide-react";
 import { ServiceCard, priceLabel } from "@/components/site/Sections";
 import { getService, getServices, getSite } from "@/lib/content";
 import { localizeHref, makeT } from "@/lib/i18n";
@@ -57,6 +58,34 @@ export default async function ServicePage({ params }: P) {
           </div>
         </div>
       </section>
+
+      {svc.tr.why_patients.length || svc.tr.why_clinicians.length ? (
+        <section className="section why">
+          <div className="container">
+            {svc.tr.why_heading ? <div className="section-head"><h2>{svc.tr.why_heading}</h2></div> : null}
+            <div className="why-grid">
+              {([["patients", svc.tr.why_patients, UserRound, t("services.for_patients")], ["clinicians", svc.tr.why_clinicians, Stethoscope, t("services.for_clinicians")]] as const).map(([key, items, Head, label]) =>
+                items.length ? (
+                  <div className={`why-col ${key}`} key={key}>
+                    <h3 className="why-title"><span className="why-badge" aria-hidden="true"><Head size={20} strokeWidth={1.9} /></span>{label}</h3>
+                    <ul className="why-list">
+                      {items.map((it, i) => {
+                        const Icon = itemIcon(it.icon, it.title);
+                        return (
+                          <li key={i}>
+                            <span className="icon-tile sm" aria-hidden="true"><Icon size={20} strokeWidth={1.8} /></span>
+                            <div><h4>{it.title}</h4>{it.text ? <p>{it.text}</p> : null}</div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {svc.tr.features.length ? (
         <section className="section alt">

@@ -314,3 +314,19 @@ p { margin: 0 0 1em; }
 /* Photos carry the brand mark in their top-left corner: anchor crops there so it is never cut. */
 .hero-media .frame img, .service-card .media img, .split .frame img, .gallery img { object-position: left top; }
 [dir="rtl"] .hero-media .frame img, [dir="rtl"] .service-card .media img, [dir="rtl"] .split .frame img, [dir="rtl"] .gallery img { object-position: left top; }
+
+/* "Why this service" — patients / clinicians */
+.why-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 860px) { .why-grid { grid-template-columns: 1fr; } }
+.why-col { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: clamp(22px, 3vw, 32px); }
+.why-col.clinicians { background: var(--navy); border-color: var(--navy); color: #d6e1ea; }
+.why-col.clinicians h3, .why-col.clinicians h4 { color: #fff; }
+.why-col.clinicians p { color: #b9c8d6; }
+.why-title { display: flex; align-items: center; gap: 12px; font-size: 1.25rem; margin-bottom: 22px; }
+.why-badge { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--teal); color: #fff; }
+.why-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
+.why-list li { display: flex; gap: 16px; align-items: flex-start; }
+.why-list h4 { font-size: 1.02rem; margin: 2px 0 4px; color: var(--navy); }
+.why-list p { margin: 0; color: var(--muted); font-size: .95rem; }
+.icon-tile.sm { width: 44px; height: 44px; border-radius: 12px; margin: 0; flex-shrink: 0; }
+.why-col.clinicians .icon-tile { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14); color: #8fd3e3; }

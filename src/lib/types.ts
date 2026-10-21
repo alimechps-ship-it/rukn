@@ -85,6 +85,9 @@ export interface ServiceTr {
   price_note: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  why_heading: string | null;
+  why_patients: Item[];
+  why_clinicians: Item[];
 }
 
 export interface Service {

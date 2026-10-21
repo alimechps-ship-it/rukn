@@ -220,6 +220,9 @@ function serviceTr(rows: Record<string, unknown>[], locale: string, def: string)
     price_note: str("price_note"),
     seo_title: str("seo_title"),
     seo_description: str("seo_description"),
+    why_heading: str("why_heading"),
+    why_patients: asItems(r.why_patients),
+    why_clinicians: asItems(r.why_clinicians),
   };
 }
 

@@ -25,8 +25,15 @@ export async function saveGeneralSettings(_: ActionResult, fd: FormData): Promis
     if (siteUrl && !/^https?:\/\/[^\s/]+$/.test(siteUrl.replace(/\/$/, ""))) return { ok: false, message: "Site URL must look like https://www.example.com (no path)." };
     const social: { network: string; url: string }[] = [];
     for (const line of (str(fd, "social_links", 4000) ?? "").split("\n")) {
-      const [network, url] = line.split("|").map((x) => x?.trim());
+      let [network, url] = line.split("|").map((x) => x?.trim());
       if (!network && !url) continue;
+      // A bare link is accepted too: the name is taken from the website address.
+      if (!url && /^https?:\/\//i.test(network ?? "")) {
+        url = network.replace(/^http:\/\//i, "https://");
+        const host = new URL(url).hostname.replace(/^(www|m)\./, "");
+        const known: Record<string, string> = { "facebook.com": "Facebook", "fb.com": "Facebook", "instagram.com": "Instagram", "linkedin.com": "LinkedIn", "x.com": "X", "twitter.com": "X", "youtube.com": "YouTube", "tiktok.com": "TikTok", "wa.me": "WhatsApp" };
+        network = known[host] ?? host.split(".")[0].replace(/^./, (c) => c.toUpperCase());
+      }
       if (!network || !url || !/^https:\/\//.test(url)) return { ok: false, message: `Social link “${line}” must be written as Name | https://…` };
       social.push({ network: network.slice(0, 40), url: url.slice(0, 300) });
     }

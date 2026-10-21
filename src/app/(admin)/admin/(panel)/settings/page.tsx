@@ -85,7 +85,7 @@ export default async function Settings() {
               <Text name="whatsapp_number" label="WhatsApp number" defaultValue={s.whatsapp_number} placeholder="+20…" hint="International format. Hidden while empty." />
               <Text name="country_code" label="Country (ISO code)" defaultValue={s.country_code} maxLength={2} />
               <div />
-              <TextArea name="social_links" label="Social media links (one per line: Name | https://…)" defaultValue={social} rows={3} />
+              <TextArea name="social_links" label="Social media links (one per line — a link, or Name | link)" defaultValue={social} rows={3} />
               <div className="field"><label>Logo</label><MediaPicker name="logo_media_id" media={media} value={s.logo_media_id} /><div className="hint">The official RUKN logo from the media library (category “brand”).</div></div>
               <div className="field"><label>Favicon</label><MediaPicker name="favicon_media_id" media={media} value={s.favicon_media_id} /><div className="hint">Square image. A built-in favicon is used while empty.</div></div>
               <div className="field full"><label>Default social share image</label><MediaPicker name="og_image_media_id" media={media} value={s.og_image_media_id} /></div>

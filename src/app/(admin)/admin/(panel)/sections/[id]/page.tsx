@@ -110,7 +110,7 @@ export default async function EditSection({ params }: { params: Promise<{ id: st
                   {has("subheading") ? <TextArea name={n("subheading")} label="Supporting text" defaultValue={t?.subheading} dir={l.dir} disabled={locked} maxLength={400} rows={2} /> : null}
                   {has("body") ? <TextArea name={n("body")} label="Body text" defaultValue={t?.body} dir={l.dir} disabled={locked} rows={8} hint={RICH_HINT} /> : null}
                   {has("items") ? (
-                    <div className="field full"><label>Items</label><ItemsEditor name={n("items")} initial={(t?.items ?? []).map((i) => ({ title: i.title ?? "", text: i.text ?? "" }))} dir={l.dir} disabled={locked} /></div>
+                    <div className="field full"><label>Items</label><ItemsEditor name={n("items")} initial={(t?.items ?? []).map((i) => ({ title: i.title ?? "", text: i.text ?? "", icon: (i as { icon?: string }).icon }))} dir={l.dir} disabled={locked} withIcons={s.type === "cards" || s.type === "benefits"} /></div>
                   ) : null}
                   {has("primary") ? (
                     <>

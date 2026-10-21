@@ -5,6 +5,7 @@ import {
   allLanguages, bool, createSessionClient, errMessage, int, json, revalidateSite, safeHref, slugify, str,
 } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
+import { ITEM_ICON_KEYS } from "@/components/icons";
 
 const SECTION_TYPES = ["hero", "rich_text", "cards", "steps", "benefits", "services_grid", "gallery", "faq", "cta", "team", "image_text", "contact_details", "inquiry_form", "notice"];
 const TEMPLATES = ["home", "standard", "about", "partnerships", "contact", "legal", "case"];
@@ -145,7 +146,7 @@ export async function saveSection(sectionId: string, _: ActionResult, fd: FormDa
       const row = {
         section_id: sectionId, locale: l.code, variant: "draft" as const,
         eyebrow: p("eyebrow", 120), heading: p("heading", 200), subheading: p("subheading", 400), body: p("body", 8000),
-        items: json<{ title?: string; text?: string }[]>(fd, `tr.${l.code}.items`, []).slice(0, 30).map((i) => ({ title: String(i.title ?? "").slice(0, 200), text: String(i.text ?? "").slice(0, 1000) })),
+        items: json<{ title?: string; text?: string; icon?: string }[]>(fd, `tr.${l.code}.items`, []).slice(0, 30).map((i) => ({ title: String(i.title ?? "").slice(0, 200), text: String(i.text ?? "").slice(0, 1000), ...(i.icon && ITEM_ICON_KEYS.includes(i.icon) ? { icon: i.icon } : {}) })),
         primary_label: p("primary_label", 80), primary_href: safeHref(p("primary_href", 300)),
         secondary_label: p("secondary_label", 80), secondary_href: safeHref(p("secondary_href", 300)),
         updated_by: user.id,

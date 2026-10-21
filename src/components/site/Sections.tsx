@@ -4,6 +4,7 @@ import { localizeHref } from "@/lib/i18n";
 import { RichText } from "@/lib/rich-text";
 import type { PageData, Section, Service, SiteData } from "@/lib/types";
 import { InquiryForm } from "./InquiryForm";
+import { Clock, Info, itemIcon, Mail, MapPin, serviceIcon, Share2, SocialIcon, WhatsAppIcon } from "@/components/icons";
 import { Picture } from "./Picture";
 
 interface Ctx {
@@ -51,12 +52,14 @@ export function priceLabel(s: Service, locale: string, from: string) {
 
 export function ServiceCard({ s, locale, t }: { s: Service; locale: string; t: (k: string) => string }) {
   const price = priceLabel(s, locale, t("services.price_from"));
+  const Icon = serviceIcon(s.slug);
   return (
     <Link href={`/${locale}/services/${s.slug}`} className="service-card">
       <div className="media">
         <Picture media={s.media} sizes="(max-width: 640px) 100vw, (max-width: 1020px) 50vw, 400px" illustrativeLabel={t("image.illustrative")} />
       </div>
       <div className="body">
+        <span className="icon-badge" aria-hidden="true"><Icon size={22} strokeWidth={1.8} /></span>
         <h3>{s.tr.nav_title ?? s.tr.title}</h3>
         {s.tr.summary ? <p>{s.tr.summary}</p> : null}
         {price ? <div className="price">{price}{s.tr.price_note ? ` · ${s.tr.price_note}` : ""}</div> : null}
@@ -181,13 +184,16 @@ async function SectionView({ s, ctx, index }: { s: Section; ctx: Ctx; index: num
           <div className="container">
             <Head s={s} />
             <div className={`grid ${s.tr.items.length === 4 ? "grid-4" : s.tr.items.length === 2 ? "grid-2" : "grid-3"}`}>
-              {s.tr.items.map((it, i) => (
+              {s.tr.items.map((it, i) => {
+                const Icon = itemIcon(it.icon, it.title);
+                return (
                 <div className="card" key={i}>
-                  <div className="mark" aria-hidden="true" />
+                  <span className="icon-tile" aria-hidden="true"><Icon size={24} strokeWidth={1.7} /></span>
                   <h3>{it.title}</h3>
                   {it.text ? <p>{it.text}</p> : null}
                 </div>
-              ))}
+                );
+              })}
             </div>
             <Buttons s={s} locale={locale} />
           </div>
@@ -259,8 +265,11 @@ async function SectionView({ s, ctx, index }: { s: Section; ctx: Ctx; index: num
         <section className="section" style={{ paddingBlock: "32px 0" }}>
           <div className="container">
             <div className="notice" role="note">
-              {s.tr.heading ? <h2>{s.tr.heading}</h2> : null}
-              {s.tr.body ? <p>{s.tr.body}</p> : null}
+              <span className="notice-icon" aria-hidden="true"><Info size={22} strokeWidth={1.8} /></span>
+              <div>
+                {s.tr.heading ? <h2>{s.tr.heading}</h2> : null}
+                {s.tr.body ? <p>{s.tr.body}</p> : null}
+              </div>
             </div>
           </div>
         </section>
@@ -298,21 +307,21 @@ async function SectionView({ s, ctx, index }: { s: Section; ctx: Ctx; index: num
       const tr = site.settingsTr;
       const wa = st.whatsapp_number ? `https://wa.me/${st.whatsapp_number.replace(/\D/g, "")}` : null;
       const rows = [
-        st.contact_email ? { label: t("contact.email"), node: <a href={`mailto:${st.contact_email}`}><bdi>{st.contact_email}</bdi></a> } : null,
-        wa ? { label: t("contact.whatsapp"), node: <a href={wa} target="_blank" rel="noopener noreferrer"><bdi dir="ltr">{st.whatsapp_number}</bdi></a> } : null,
-        tr.location_text ? { label: t("contact.location"), node: <span>{tr.location_text}</span> } : null,
-        tr.business_hours ? { label: t("contact.hours"), node: <span style={{ whiteSpace: "pre-line" }}>{tr.business_hours}</span> } : null,
+        st.contact_email ? { icon: <Mail size={22} strokeWidth={1.8} />, label: t("contact.email"), node: <a href={`mailto:${st.contact_email}`}><bdi>{st.contact_email}</bdi></a> } : null,
+        wa ? { icon: <WhatsAppIcon size={22} />, label: t("contact.whatsapp"), node: <a href={wa} target="_blank" rel="noopener noreferrer"><bdi dir="ltr">{st.whatsapp_number}</bdi></a> } : null,
+        tr.location_text ? { icon: <MapPin size={22} strokeWidth={1.8} />, label: t("contact.location"), node: <span>{tr.location_text}</span> } : null,
+        tr.business_hours ? { icon: <Clock size={22} strokeWidth={1.8} />, label: t("contact.hours"), node: <span style={{ whiteSpace: "pre-line" }}>{tr.business_hours}</span> } : null,
         st.social_links.length
-          ? { label: t("contact.social"), node: <span style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>{st.social_links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.network}</a>)}</span> }
+          ? { icon: <Share2 size={22} strokeWidth={1.8} />, label: t("contact.social"), node: <span className="social-row">{st.social_links.map((l) => <a key={l.url} className="social-btn" href={l.url} target="_blank" rel="noopener noreferrer" aria-label={l.network} title={l.network}><SocialIcon url={l.url} name={l.network} /></a>)}</span> }
           : null,
-      ].filter(Boolean) as { label: string; node: React.ReactNode }[];
+      ].filter(Boolean) as { icon: React.ReactNode; label: string; node: React.ReactNode }[];
       return (
         <section className="section" style={{ paddingBottom: 0 }}>
           <div className="container">
             {s.tr.heading ? <h2>{s.tr.heading}</h2> : null}
             {rows.length ? (
               <ul className="contact-list grid grid-3">
-                {rows.map((r) => <li key={r.label}><span className="label">{r.label}</span>{r.node}</li>)}
+                {rows.map((r) => <li key={r.label}><span className="contact-icon" aria-hidden="true">{r.icon}</span><div><span className="label">{r.label}</span>{r.node}</div></li>)}
               </ul>
             ) : (
               <p style={{ color: "var(--muted)" }}>{t("contact.none")}</p>

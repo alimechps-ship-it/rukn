@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Picture } from "@/components/site/Picture";
+import { Check, Info, serviceIcon } from "@/components/icons";
 import { ServiceCard, priceLabel } from "@/components/site/Sections";
 import { getService, getServices, getSite } from "@/lib/content";
 import { localizeHref, makeT } from "@/lib/i18n";
@@ -40,6 +41,7 @@ export default async function ServicePage({ params }: P) {
       <section className="hero">
         <div className="container hero-grid">
           <div>
+            {(() => { const Icon = serviceIcon(svc.slug); return <span className="icon-tile lg" aria-hidden="true"><Icon size={28} strokeWidth={1.7} /></span>; })()}
             <div className="eyebrow">{svc.tr.nav_title ?? t("footer.services")}</div>
             <h1>{svc.tr.title}</h1>
             <RichText text={svc.tr.description} className="lead" />
@@ -60,7 +62,7 @@ export default async function ServicePage({ params }: P) {
         <section className="section alt">
           <div className="container split text-only">
             <div>{svc.tr.features_heading ? <h2>{svc.tr.features_heading}</h2> : null}</div>
-            <ul className="feature-list">{svc.tr.features.map((f, i) => <li key={i}>{f}</li>)}</ul>
+            <ul className="feature-list">{svc.tr.features.map((f, i) => <li key={i}><span className="check" aria-hidden="true"><Check size={16} strokeWidth={2.5} /></span>{f}</li>)}</ul>
           </div>
         </section>
       ) : null}
@@ -76,7 +78,7 @@ export default async function ServicePage({ params }: P) {
 
       {svc.tr.notice ? (
         <section className="section" style={{ paddingBlock: "8px 32px" }}>
-          <div className="container"><div className="notice" role="note"><p>{svc.tr.notice}</p></div></div>
+          <div className="container"><div className="notice" role="note"><span className="notice-icon" aria-hidden="true"><Info size={22} strokeWidth={1.8} /></span><p>{svc.tr.notice}</p></div></div>
         </section>
       ) : null}
 

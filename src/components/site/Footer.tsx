@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { localizeHref } from "@/lib/i18n";
 import type { SiteData } from "@/lib/types";
+import { Mail, MapPin, SocialIcon, WhatsAppIcon } from "@/components/icons";
 
 export function Footer({ site, logoSrc, t }: { site: SiteData; logoSrc: string; t: (k: string) => string }) {
   const { locale, settings, settingsTr } = site;
@@ -16,7 +17,16 @@ export function Footer({ site, logoSrc, t }: { site: SiteData; logoSrc: string; 
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logoSrc} alt={settings.site_name} width={156} height={166} loading="lazy" />
             {settingsTr.footer_text ? <p>{settingsTr.footer_text}</p> : null}
-            {settingsTr.location_text ? <p><strong>{settingsTr.location_text}</strong></p> : null}
+            {settingsTr.location_text ? <p className="with-icon"><MapPin size={18} strokeWidth={1.8} aria-hidden="true" /><strong>{settingsTr.location_text}</strong></p> : null}
+            {settings.social_links.length ? (
+              <div className="social-row">
+                {settings.social_links.map((s) => (
+                  <a key={s.url} className="social-btn" href={s.url} target="_blank" rel="noopener noreferrer" aria-label={s.network} title={s.network}>
+                    <SocialIcon url={s.url} name={s.network} />
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
           {services.length ? (
             <div>
@@ -30,15 +40,12 @@ export function Footer({ site, logoSrc, t }: { site: SiteData; logoSrc: string; 
               <ul>{company.map((n) => <li key={n.id}>{n.is_external ? <a href={n.href} rel="noopener noreferrer" target="_blank">{n.label}</a> : <Link href={localizeHref(n.href, locale)}>{n.label}</Link>}</li>)}</ul>
             </div>
           ) : null}
-          {settings.contact_email || wa || settings.social_links.length ? (
+          {settings.contact_email || wa ? (
             <div>
               <h2>{t("footer.contact")}</h2>
               <ul>
-                {settings.contact_email ? <li><a href={`mailto:${settings.contact_email}`}><bdi>{settings.contact_email}</bdi></a></li> : null}
-                {wa ? <li><a href={wa} rel="noopener noreferrer" target="_blank">{t("contact.whatsapp")}</a></li> : null}
-                {settings.social_links.map((s) => (
-                  <li key={s.url}><a href={s.url} rel="noopener noreferrer" target="_blank">{s.network}</a></li>
-                ))}
+                {settings.contact_email ? <li><a className="with-icon" href={`mailto:${settings.contact_email}`}><Mail size={17} strokeWidth={1.8} aria-hidden="true" /><bdi>{settings.contact_email}</bdi></a></li> : null}
+                {wa ? <li><a className="with-icon" href={wa} rel="noopener noreferrer" target="_blank"><WhatsAppIcon size={17} />{t("contact.whatsapp")}</a></li> : null}
               </ul>
             </div>
           ) : null}
@@ -48,6 +55,11 @@ export function Footer({ site, logoSrc, t }: { site: SiteData; logoSrc: string; 
           <ul>{site.legal.map((n) => <li key={n.id}><Link href={localizeHref(n.href, locale)}>{n.label}</Link></li>)}</ul>
         </div>
       </div>
+      {wa ? (
+        <a className="wa-float" href={wa} target="_blank" rel="noopener noreferrer" aria-label={t("contact.whatsapp")} title={t("contact.whatsapp")}>
+          <WhatsAppIcon size={28} />
+        </a>
+      ) : null}
     </footer>
   );
 }

@@ -36,7 +36,7 @@ function byVariant<T extends { variant?: string }>(rows: T[] | null | undefined,
 }
 
 function asItems(v: unknown): Item[] {
-  return Array.isArray(v) ? v.filter((x) => x && typeof x === "object").map((x) => ({ title: String((x as Item).title ?? ""), text: String((x as Item).text ?? "") })) : [];
+  return Array.isArray(v) ? v.filter((x) => x && typeof x === "object").map((x) => ({ title: String((x as Item).title ?? ""), text: String((x as Item).text ?? ""), icon: typeof (x as Item).icon === "string" ? (x as Item).icon : undefined })) : [];
 }
 
 export const getLanguages = cache(async (): Promise<Language[]> => {

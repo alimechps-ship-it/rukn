@@ -47,6 +47,7 @@ export interface Media {
 export interface Item {
   title?: string;
   text?: string;
+  icon?: string;
 }
 
 export interface SectionTr {

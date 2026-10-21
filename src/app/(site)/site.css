@@ -285,3 +285,26 @@ p { margin: 0 0 1em; }
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
 .reveal.in { opacity: 1; transform: none; }
 .no-js .reveal { opacity: 1; transform: none; }
+
+/* ---------- Icons ------------------------------------------------------- */
+.icon-tile { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: var(--teal-soft); color: var(--teal-ink); margin-bottom: 18px; border: 1px solid #cfe7ee; }
+.icon-tile.lg { width: 60px; height: 60px; margin-bottom: 18px; }
+.card:hover .icon-tile { background: var(--navy); color: #fff; border-color: var(--navy); transition: background .25s, color .25s; }
+.service-card .body { position: relative; padding-top: 34px; }
+.icon-badge { position: absolute; inset-block-start: -26px; inset-inline-start: 22px; width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--navy); color: #fff; box-shadow: 0 6px 16px rgba(16, 38, 61, .22); border: 3px solid #fff; }
+.service-card:hover .icon-badge { background: var(--teal); }
+.notice { display: flex; gap: 16px; align-items: flex-start; }
+.notice-icon { color: var(--teal-ink); flex-shrink: 0; margin-top: 2px; }
+.feature-list li::before { display: none; }
+.feature-list .check { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--teal); color: #fff; flex-shrink: 0; }
+.contact-list li { display: flex; gap: 14px; align-items: flex-start; }
+.contact-icon { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--teal-soft); color: var(--teal-ink); flex-shrink: 0; }
+.social-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.social-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1px solid var(--line); color: var(--navy); transition: background .2s, color .2s, transform .2s, border-color .2s; }
+.social-btn:hover { background: var(--navy); color: #fff; border-color: var(--navy); transform: translateY(-2px); }
+.with-icon { display: inline-flex; align-items: center; gap: 8px; }
+.with-icon svg { color: var(--teal-ink); flex-shrink: 0; }
+.wa-float { position: fixed; inset-block-end: 22px; inset-inline-end: 22px; z-index: 65; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: #25D366; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); transition: transform .2s; }
+.wa-float:hover { color: #fff; transform: scale(1.06); }
+@media (max-width: 640px) { .wa-float { width: 52px; height: 52px; inset-block-end: 16px; inset-inline-end: 16px; } }
+.service-card .illustrative { inset-block-end: auto; inset-block-start: 10px; inset-inline-start: auto; inset-inline-end: 10px; }

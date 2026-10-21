@@ -3,6 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import {
+  Activity, FileText, HelpCircle, Image as ImageIcon, Inbox, Languages, LayoutDashboard, Megaphone, Menu as MenuIcon,
+  Settings, Stethoscope, Trash2, UserCog, Users,
+} from "lucide-react";
+
+const ICONS: Record<string, typeof LayoutDashboard> = {
+  "/admin": LayoutDashboard, "/admin/pages": FileText, "/admin/services": Stethoscope, "/admin/faqs": HelpCircle,
+  "/admin/team": Users, "/admin/navigation": MenuIcon, "/admin/announcements": Megaphone, "/admin/strings": Languages,
+  "/admin/media": ImageIcon, "/admin/trash": Trash2, "/admin/inquiries": Inbox, "/admin/settings": Settings,
+  "/admin/users": UserCog, "/admin/activity": Activity,
+};
 
 export interface NavGroup { label: string; items: { href: string; label: string; badge?: number }[] }
 
@@ -24,7 +35,10 @@ export function Sidebar({ groups, user, signOut }: { groups: NavGroup[]; user: {
               <div className="group">{g.label}</div>
               {g.items.map((it) => (
                 <Link key={it.href} href={it.href} className="item" aria-current={active(it.href) ? "page" : undefined}>
-                  <span>{it.label}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                    {(() => { const I = ICONS[it.href]; return I ? <I size={17} strokeWidth={1.8} aria-hidden="true" /> : null; })()}
+                    {it.label}
+                  </span>
                   {it.badge ? <span className="badge-count">{it.badge}</span> : null}
                 </Link>
               ))}

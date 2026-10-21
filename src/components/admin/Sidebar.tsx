@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  Activity, FileText, HelpCircle, Image as ImageIcon, Inbox, Languages, LayoutDashboard, Megaphone, Menu as MenuIcon,
+  Activity, BarChart3, FilePlus2, FolderKanban, FileText, HelpCircle, Image as ImageIcon, Inbox, Languages, LayoutDashboard, Megaphone, Menu as MenuIcon,
   Settings, Stethoscope, Trash2, UserCog, Users,
 } from "lucide-react";
 
@@ -13,6 +13,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/admin/team": Users, "/admin/navigation": MenuIcon, "/admin/announcements": Megaphone, "/admin/strings": Languages,
   "/admin/media": ImageIcon, "/admin/trash": Trash2, "/admin/inquiries": Inbox, "/admin/settings": Settings,
   "/admin/users": UserCog, "/admin/activity": Activity,
+  "/admin/cases": FolderKanban, "/admin/cases/new": FilePlus2, "/admin/reports": BarChart3,
 };
 
 export interface NavGroup { label: string; items: { href: string; label: string; badge?: number }[] }
@@ -20,7 +21,9 @@ export interface NavGroup { label: string; items: { href: string; label: string;
 export function Sidebar({ groups, user, signOut }: { groups: NavGroup[]; user: { email: string; roles: string }; signOut: () => Promise<void> }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const active = (href: string) => (href === "/admin" ? path === "/admin" : path === href || path.startsWith(`${href}/`));
+  const hrefs = groups.flatMap((g) => g.items.map((i) => i.href));
+  const matches = (href: string) => (href === "/admin" ? path === "/admin" : path === href || path.startsWith(`${href}/`));
+  const active = (href: string) => matches(href) && !hrefs.some((h) => h.length > href.length && h.startsWith(href) && matches(h));
   return (
     <>
       <div className="mobile-bar">

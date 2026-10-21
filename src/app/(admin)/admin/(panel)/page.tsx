@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient, fmtDate, hasPendingChanges, SECTION_TR_FIELDS, SERVICE_TR_FIELDS } from "@/lib/admin";
 
@@ -8,6 +9,7 @@ type Stats = { total: number; new: number; last_30_days: number; by_type: Record
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
   const user = await requireStaff();
+  if (!can.backOffice(user)) redirect("/admin/cases");
   const sp = await searchParams;
   const db = await createSessionClient();
 
@@ -21,6 +23,18 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     db.from("audit_logs").select("id,action,entity_type,summary,created_at,actor_id").order("created_at", { ascending: false }).limit(10),
   ]);
   const stats = statsRes.data as Stats | null;
+  let caseStats: { open: number; awaiting: number; production: number; delivered30: number } | null = null;
+  if (can.caseStaff(user)) {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const head = { count: "exact" as const, head: true };
+    const [a, b, c, d] = await Promise.all([
+      db.from("cases").select("id", head).not("status", "in", "(delivered,cancelled)"),
+      db.from("cases").select("id", head).eq("status", "awaiting_approval"),
+      db.from("cases").select("id", head).eq("status", "production"),
+      db.from("cases").select("id", head).gte("delivered_at", since),
+    ]);
+    caseStats = { open: a.count ?? 0, awaiting: b.count ?? 0, production: c.count ?? 0, delivered30: d.count ?? 0 };
+  }
   const count = (rows: { status: string }[] | null, s: string) => (rows ?? []).filter((r) => r.status === s).length;
   const pending =
     (sectionsRes.data ?? []).filter((s) => s.status === "published" && hasPendingChanges(s.content_section_translations as Record<string, unknown>[], SECTION_TR_FIELDS)).length +
@@ -38,6 +52,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
       {sp.denied ? <div className="flash warn">Your role does not have access to that area.</div> : null}
 
+      {caseStats ? (
+        <div className="stats">
+          <div className="stat"><div className="k">Open cases</div><div className="v"><Link href="/admin/cases?open=1">{caseStats.open}</Link></div></div>
+          <div className="stat"><div className="k">Awaiting doctor approval</div><div className="v"><Link href="/admin/cases?status=awaiting_approval">{caseStats.awaiting}</Link></div></div>
+          <div className="stat"><div className="k">In production</div><div className="v"><Link href="/admin/cases?status=production">{caseStats.production}</Link></div></div>
+          <div className="stat"><div className="k">Delivered (30 days)</div><div className="v">{caseStats.delivered30}</div></div>
+        </div>
+      ) : null}
       {stats ? (
         <div className="stats">
           <div className="stat"><div className="k">Total inquiries</div><div className="v">{stats.total}</div></div>

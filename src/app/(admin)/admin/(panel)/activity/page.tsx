@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/auth";
+import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 
 export const metadata = { title: "Activity log" };
 const PER = 100;
 
 export default async function Activity({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
-  await requireStaff();
+  await requireStaff(can.backOffice);
   const page = Math.max(1, Number((await searchParams).page ?? 1) || 1);
   const db = await createSessionClient();
   const { data, count, error } = await db.from("audit_logs").select("*", { count: "exact" }).order("created_at", { ascending: false }).range((page - 1) * PER, page * PER - 1);

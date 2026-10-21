@@ -365,6 +365,150 @@ end $$;
 select t.ok((select count(*) > 0 from public.audit_logs where entity_type = 'inquiries'), 'super admin sees the full audit trail');
 reset role;
 
+
+-- =====================================================================
+-- CASES / AGENTS
+-- =====================================================================
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000a1', 'agent1@test.local'),
+  ('00000000-0000-0000-0000-0000000000a2', 'agent2@test.local'),
+  ('00000000-0000-0000-0000-0000000000c1', 'casemgr@test.local');
+insert into public.user_roles (user_id, role) values
+  ('00000000-0000-0000-0000-0000000000a1', 'agent'),
+  ('00000000-0000-0000-0000-0000000000a2', 'agent'),
+  ('00000000-0000-0000-0000-0000000000c1', 'case_manager');
+
+-- Agent 1 creates a case
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+do $$ declare v_code text; v_agent uuid; begin
+  insert into public.cases (agent_id, clinic_name, doctor_name, country_code, patient_ref, status, quote_amount, quote_currency)
+  values ('00000000-0000-0000-0000-0000000000a2', 'Smile Clinic', 'Dr. Test', 'EG', 'P-001', 'delivered', 999, 'USD')
+  returning code, agent_id into v_code, v_agent;
+  perform t.ok(v_code ~ '^RK-EG-[0-9]{2}-[0-9]{5}$', 'agent can create a case; code generated (' || v_code || ')');
+  perform t.ok(v_agent = '00000000-0000-0000-0000-0000000000a1', 'agent cannot create a case on behalf of another agent');
+end $$;
+select t.ok((select status = 'submitted' and quote_amount is null from public.cases where patient_ref = 'P-001'), 'agent cannot set status or price on creation');
+select t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001'), 'case submission is logged on the timeline');
+do $$ begin
+  update public.cases set status = 'delivered', clinic_name = 'Smile Clinic 2' where patient_ref = 'P-001';
+  perform t.ok((select status = 'submitted' and clinic_name = 'Smile Clinic 2' from public.cases where patient_ref = 'P-001'),
+               'agent can correct details while submitted, but cannot change status');
+end $$;
+do $$ begin
+  insert into public.case_events (case_id, kind, body, author_id) select id, 'internal', 'x', auth.uid() from public.cases where patient_ref = 'P-001';
+  perform t.ok(false, 'agent must not write internal notes');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot write internal notes'); end $$;
+do $$ begin
+  insert into public.case_events (case_id, kind, body, author_id) select id, 'comment', 'Patient prefers morning appointments', auth.uid() from public.cases where patient_ref = 'P-001';
+  perform t.ok(true, 'agent can comment on his own case');
+end $$;
+do $$ begin
+  insert into public.case_payments (case_id, amount, currency, method) select id, 10, 'USD', 'cash' from public.cases where patient_ref = 'P-001';
+  perform t.ok(false, 'agent must not record payments');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot record payments'); end $$;
+do $$ begin
+  insert into storage.objects (bucket_id, name) select 'case-files', id || '/scan.stl' from public.cases where patient_ref = 'P-001';
+  perform t.ok(true, 'agent can upload clinical files to his own case folder');
+end $$;
+do $$ begin
+  insert into storage.objects (bucket_id, name) select 'case-files', id || '/evil.exe' from public.cases where patient_ref = 'P-001';
+  perform t.ok(false, 'exe must be rejected');
+exception when insufficient_privilege then perform t.ok(true, 'clinical upload rejects disallowed file types'); end $$;
+select t.ok((select count(*) = 0 from public.inquiries), 'agent cannot read inquiries');
+select t.ok((select count(*) = 0 from public.content_section_translations where variant = 'draft'), 'agent cannot read draft website content');
+select t.ok((select count(*) = 0 from public.audit_logs), 'agent cannot read the audit log');
+reset role;
+
+-- Agent 2 sees nothing of agent 1
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cases), 'agent 2 cannot see agent 1 cases');
+select t.ok((select count(*) = 0 from public.case_events), 'agent 2 cannot see agent 1 timeline');
+do $$ declare n int; begin
+  update public.cases set clinic_name = 'hijack';
+  get diagnostics n = row_count;
+  perform t.ok(n = 0, 'agent 2 cannot modify agent 1 cases');
+end $$;
+do $$ begin
+  insert into storage.objects (bucket_id, name) select 'case-files', id || '/x.stl' from public.cases;  -- sees no ids
+  insert into storage.objects (bucket_id, name) values ('case-files', (select id::text from public.cases limit 1) || '/x.stl');
+  perform t.ok(false, 'agent 2 must not upload into others cases');
+exception when insufficient_privilege or not_null_violation then perform t.ok(true, 'agent 2 cannot upload into another agent''s case');
+end $$;
+reset role;
+do $$ begin
+  set local role authenticated;
+  perform t.login('00000000-0000-0000-0000-0000000000a2');
+end $$;
+reset role;
+-- direct path attack with a known case id
+do $$ declare cid uuid; begin
+  select id into cid from public.cases where patient_ref = 'P-001';
+  perform t.login('00000000-0000-0000-0000-0000000000a2');
+  execute 'set role authenticated';
+  begin
+    insert into storage.objects (bucket_id, name) values ('case-files', cid || '/x.stl');
+    perform t.ok(false, 'cross-agent path upload must fail');
+  exception when insufficient_privilege then perform t.ok(true, 'agent 2 cannot upload using agent 1 case id in the path');
+  end;
+  execute 'reset role';
+end $$;
+
+-- Case manager processes the case
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) >= 1 from public.cases), 'case manager sees all cases');
+select t.ok((select count(*) = 0 from public.inquiries), 'case manager cannot read sales inquiries');
+do $$ begin
+  update public.cases set intake_received_at = now(), intake_items = '[{"title":"Upper/lower STL","text":"1"}]', status = 'records_received' where patient_ref = 'P-001';
+  perform t.ok((select intake_no ~ '^RR-[0-9]{2}-[0-9]{5}$' from public.cases where patient_ref = 'P-001'), 'records intake gets a receipt number');
+  update public.cases set status = 'awaiting_approval', quote_amount = 450, quote_currency = 'USD' where patient_ref = 'P-001';
+  insert into public.case_payments (case_id, amount, currency, method) select id, 200, 'USD', 'bank_transfer' from public.cases where patient_ref = 'P-001';
+  perform t.ok((select receipt_no ~ '^RC-[0-9]{2}-[0-9]{5}$' from public.case_payments limit 1), 'payment gets a receipt number');
+  insert into public.case_events (case_id, kind, body, author_id) select id, 'internal', 'Check bite registration', auth.uid() from public.cases where patient_ref = 'P-001';
+  perform t.ok(true, 'case manager can write internal notes');
+end $$;
+reset role;
+
+-- Agent approves plan; cannot see internal note; sees payments
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_events where kind = 'internal'), 'agent cannot see internal notes');
+select t.ok((select count(*) = 1 from public.case_payments), 'agent can see payments on his case (to print receipts)');
+do $$ begin
+  update public.cases set clinic_name = 'late edit' where patient_ref = 'P-001';
+  perform t.ok(false, 'agent must not edit after submission');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot edit the case once it is being processed'); end $$;
+do $$ begin
+  perform public.decide_case_plan((select id from public.cases where patient_ref = 'P-001'), 'approve', 'Dr. Test', 'Looks good');
+  perform t.ok((select status = 'approved' and plan_approved_by = 'Dr. Test' from public.cases where patient_ref = 'P-001'), 'agent records the treating doctor''s plan approval');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ begin
+  update public.cases set status = 'shipped', carrier = 'DHL', tracking_no = '123' where patient_ref = 'P-001';
+  update public.cases set status = 'delivered', received_by_name = 'Clinic reception' where patient_ref = 'P-001';
+  perform t.ok((select delivery_no ~ '^DN-[0-9]{2}-[0-9]{5}$' and shipped_at is not null and delivered_at is not null and closed_at is not null from public.cases where patient_ref = 'P-001'),
+               'delivery gets a delivery-note number and dates are stamped');
+  perform t.ok((select count(*) >= 6 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001'), 'every step is recorded on the case timeline');
+end $$;
+do $$ begin
+  update public.cases set code = 'HACKED' where patient_ref = 'P-001';
+  perform t.ok((select code like 'RK-EG-%' from public.cases where patient_ref = 'P-001'), 'case code can never be changed');
+end $$;
+reset role;
+
+select t.login(null);
+set role anon;
+do $$ begin
+  perform count(*) from public.cases;
+  perform t.ok(false, 'anon must not read cases');
+exception when insufficient_privilege then perform t.ok(true, 'anonymous visitors cannot read cases'); end $$;
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');
@@ -378,7 +522,8 @@ rollback;
 
 -- Storage: the media bucket exists and no clinical bucket is created
 select t.ok((select public from storage.buckets where id = 'media'), 'media bucket exists and is public-read');
-select t.ok((select count(*) = 1 from storage.buckets), 'no other (e.g. clinical-records) bucket is created');
+select t.ok((select not public from storage.buckets where id = 'case-files'), 'clinical case-files bucket exists and is PRIVATE');
+select t.ok((select count(*) = 2 from storage.buckets), 'no other buckets are created');
 
 -- Every table in public has RLS enabled
 select t.ok((select bool_and(c.relrowsecurity) from pg_class c join pg_namespace n on n.oid = c.relnamespace

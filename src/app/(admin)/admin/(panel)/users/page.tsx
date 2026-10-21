@@ -13,6 +13,8 @@ const ROLE_HELP: Record<AppRole, string> = {
   content_manager: "Pages, services, media, FAQs, publishing",
   sales_manager: "Inquiries and internal notes",
   translator: "Draft translations in permitted languages only",
+  case_manager: "All cases: processing, payments, shipping, reports",
+  agent: "Field agent: submits and follows his own cases only",
 };
 
 export default async function Users() {
@@ -34,6 +36,10 @@ export default async function Users() {
         <ActionForm action={inviteUser} className="form-grid" resetOnSuccess>
           <Text name="email" label="E-mail" type="email" required />
           <Text name="full_name" label="Full name" />
+          <Text name="organization" label="Company / organization (agents)" />
+          <Text name="country" label="Country (agents)" />
+          <Text name="region" label="Region / territory (agents)" />
+          <Text name="phone" label="Phone / WhatsApp" type="tel" />
           <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} /> {ROLE_LABELS[r]}</label>)}</div></div>
           <div className="field full"><label>Translator languages</label><div className="btn-row">{langs.map((l) => <label key={l.code} className="check"><input type="checkbox" name={`locale_${l.code}`} /> {l.native_name}</label>)}</div></div>
           <div className="full"><SubmitButton disabled={!serviceKey}>Send invitation</SubmitButton></div>
@@ -54,6 +60,10 @@ export default async function Users() {
               <div className="form-grid">
                 <Text name="full_name" label="Full name" defaultValue={p.full_name} />
                 <Check name="is_active" label="Active (can sign in to the admin)" defaultChecked={p.is_active} />
+                <Text name="organization" label="Company / organization" defaultValue={p.organization} />
+                <Text name="country" label="Country" defaultValue={p.country} />
+                <Text name="region" label="Region / territory" defaultValue={p.region} />
+                <Text name="phone" label="Phone / WhatsApp" type="tel" defaultValue={p.phone} />
                 <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} defaultChecked={mine.includes(r)} /> {ROLE_LABELS[r]}</label>)}</div></div>
                 <div className="field full"><label>Translator languages</label><div className="btn-row">{langs.map((l) => <label key={l.code} className="check"><input type="checkbox" name={`locale_${l.code}`} defaultChecked={(p.allowed_locales ?? []).includes(l.code)} /> {l.native_name}</label>)}</div></div>
               </div>

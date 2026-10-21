@@ -18,6 +18,8 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   content_manager: "Content Manager",
   sales_manager: "Sales Manager",
   translator: "Translator",
+  case_manager: "Case Manager",
+  agent: "Agent",
 };
 
 /** Current signed-in user with roles (verified against Supabase Auth on every call). */
@@ -44,7 +46,13 @@ export const can = {
   translate: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "content_manager" || r === "translator"),
   inquiries: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "sales_manager"),
   admin: (u: StaffUser | null) => !!u?.roles.includes("super_admin"),
+  /** Anyone allowed into /admin (back-office staff and field agents). */
   staff: (u: StaffUser | null) => !!u && u.isActive && u.roles.length > 0,
+  /** Back-office roles (everything except agents). */
+  backOffice: (u: StaffUser | null) => !!u?.roles.some((r) => r !== "agent"),
+  caseStaff: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager"),
+  agent: (u: StaffUser | null) => !!u?.roles.includes("agent"),
+  cases: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager" || r === "agent"),
   locale: (u: StaffUser | null, locale: string) =>
     !!u && (u.roles.some((r) => r === "super_admin" || r === "content_manager") || (u.roles.includes("translator") && u.allowedLocales.includes(locale))),
 };

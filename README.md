@@ -53,6 +53,15 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 | Content Manager | pages, sections, services, media, FAQs, team, navigation, announcements, publishing, trash |
 | Sales Manager | inquiries, statuses, assignment, internal notes, CSV export |
 | Translator | draft translations **only for the languages assigned to them**; cannot publish, cannot see leads or settings |
+| Case Manager | all cases from all agents: intake, status workflow, files, quotation, payments/receipts, shipping, delivery, reports |
+| Agent | external representative: creates cases, uploads records, follows **only his own cases**, records the doctor's plan approval, prints his documents and reports; no access to the website CMS or leads |
+
+### Agents & case management
+- Case code `RK-{country}-{YY}-{#####}` (e.g. `RK-JO-26-00004`); documents are numbered `RR-` (records receipt), `RC-` (payment receipt), `DN-` (delivery note).
+- Workflow: Submitted → Records received → Digital diagnosis → Treatment planning → Awaiting doctor approval → Plan approved → In production → Quality check → Shipped → Delivered (plus Revision, On hold, Cancelled). Every change is written to the case timeline; internal notes are never visible to agents.
+- Files live in the **private** `case-files` bucket (50 MB each, STL/PLY/OBJ/3MF/ZIP/PDF/images/DICOM/MP4) and are opened through 2-minute signed links.
+- Printable A4 bilingual documents: case file, records receipt, payment receipt, delivery note, and the case report (also CSV export) under **Reports**.
+- Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
 
@@ -150,13 +159,14 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (77 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (109 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
+- **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
 - **End-to-end acceptance** (27 checks against the running app + a real Supabase stack): see the header of `tests/e2e/acceptance.py`. Run it against a staging project, never production.
 
 ## 10. Clinical data — important
 
-The website deliberately collects **professional contact details only**. There is no upload of STL files, radiographs or patient photos, and no storage bucket for them. After an inquiry, the visitor sees the *case-submission instructions* you configure in Settings (e.g. a secure file-transfer service you control). A future clinical-upload feature would need its own private bucket, per-case access control, encryption, retention rules, audit and a data-processing review.
+The public website deliberately collects **professional contact details only**. Clinical records are uploaded only by signed-in agents/case staff into the private `case-files` bucket, with per-case access control (RLS), signed links and an audit trail; agents should use a patient reference rather than full patient names. After an inquiry, the visitor sees the *case-submission instructions* you configure in Settings (e.g. a secure file-transfer service you control). A future clinical-upload feature would need its own private bucket, per-case access control, encryption, retention rules, audit and a data-processing review.
 
 ## 11. Before launch — checklist
 

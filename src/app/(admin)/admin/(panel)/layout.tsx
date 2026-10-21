@@ -30,7 +30,19 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     newInquiries = count ?? 0;
   }
 
-  const groups: NavGroup[] = [{ label: "Overview", items: [{ href: "/admin", label: "Dashboard" }] }];
+  const groups: NavGroup[] = can.backOffice(user) ? [{ label: "Overview", items: [{ href: "/admin", label: "Dashboard" }] }] : [];
+  if (can.cases(user)) {
+    const db = await createSessionClient();
+    const { count: openCases } = await db.from("cases").select("id", { count: "exact", head: true }).not("status", "in", "(delivered,cancelled)");
+    groups.push({
+      label: can.caseStaff(user) ? "Cases" : "Agent portal",
+      items: [
+        { href: "/admin/cases", label: can.caseStaff(user) ? "All cases" : "My cases", badge: openCases ?? 0 },
+        { href: "/admin/cases/new", label: "New case" },
+        { href: "/admin/reports", label: "Reports" },
+      ],
+    });
+  }
   if (can.translate(user)) {
     groups.push({
       label: "Website content",
@@ -47,14 +59,12 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     });
   }
   if (can.inquiries(user)) groups.push({ label: "Leads", items: [{ href: "/admin/inquiries", label: "Inquiries", badge: newInquiries }] });
-  groups.push({
-    label: "System",
-    items: [
-      ...(can.translate(user) ? [{ href: "/admin/settings", label: "Settings" }] : []),
-      ...(can.admin(user) ? [{ href: "/admin/users", label: "Users & roles" }] : []),
-      { href: "/admin/activity", label: "Activity log" },
-    ],
-  });
+  const system = [
+    ...(can.translate(user) ? [{ href: "/admin/settings", label: "Settings" }] : []),
+    ...(can.admin(user) ? [{ href: "/admin/users", label: "Users & roles" }] : []),
+    ...(can.backOffice(user) ? [{ href: "/admin/activity", label: "Activity log" }] : []),
+  ];
+  if (system.length) groups.push({ label: "System", items: system });
 
   return (
     <div className="shell">

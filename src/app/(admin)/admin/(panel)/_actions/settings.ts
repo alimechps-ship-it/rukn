@@ -10,7 +10,10 @@ import type { AppRole } from "@/lib/types";
 function fail(e: unknown): ActionResult { return { ok: false, message: e instanceof Error ? e.message : "Unexpected error." }; }
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator"];
+const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator", "case_manager", "agent"];
+function contactFields(fd: FormData) {
+  return { phone: str(fd, "phone", 40), country: str(fd, "country", 80), region: str(fd, "region", 120), organization: str(fd, "organization", 160) };
+}
 
 // ---- Site settings ------------------------------------------------------------
 export async function saveGeneralSettings(_: ActionResult, fd: FormData): Promise<ActionResult> {
@@ -172,7 +175,7 @@ export async function inviteUser(_: ActionResult, fd: FormData): Promise<ActionR
     });
     if (error || !data.user) return { ok: false, message: `Invitation failed: ${error?.message ?? "unknown error"}` };
     const db = await createSessionClient();
-    await db.from("profiles").update({ full_name: str(fd, "full_name", 120), allowed_locales: await parseLocales(fd) }).eq("id", data.user.id);
+    await db.from("profiles").update({ full_name: str(fd, "full_name", 120), allowed_locales: await parseLocales(fd), ...contactFields(fd) }).eq("id", data.user.id);
     const { error: rErr } = await db.from("user_roles").insert(roles.map((role) => ({ user_id: data.user!.id, role, created_by: admin.id })));
     if (rErr) return { ok: false, message: `User invited, but roles could not be saved: ${errMessage(rErr)}` };
     return { ok: true, message: `Invitation e-mail sent to ${email}.` };
@@ -188,7 +191,7 @@ export async function updateUserAccess(userId: string, _: ActionResult, fd: Form
     const have = (current ?? []).map((r) => r.role as AppRole);
     const add = roles.filter((r) => !have.includes(r));
     const remove = have.filter((r) => !roles.includes(r));
-    const { error: pErr } = await db.from("profiles").update({ full_name: str(fd, "full_name", 120), is_active: bool(fd, "is_active"), allowed_locales: await parseLocales(fd) }).eq("id", userId);
+    const { error: pErr } = await db.from("profiles").update({ full_name: str(fd, "full_name", 120), is_active: bool(fd, "is_active"), allowed_locales: await parseLocales(fd), ...contactFields(fd) }).eq("id", userId);
     if (pErr) return { ok: false, message: pErr.message.includes("Super Administrator") ? "At least one active Super Administrator is required." : errMessage(pErr) };
     if (add.length) {
       const { error } = await db.from("user_roles").insert(add.map((role) => ({ user_id: userId, role, created_by: admin.id })));

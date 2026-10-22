@@ -1068,6 +1068,55 @@ select t.ok((select count(*) = 0 from public.case_dispatch_orders), 'agents do n
 select t.ok((select count(*) >= 1 from public.case_finance), 'agent sees the price of his own cases');
 reset role;
 
+-- Exchange rates and transfers between currencies
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_usd uuid; v_egp uuid; v_qar uuid; g uuid; begin
+  insert into public.cash_accounts (name, kind, currency, opening_balance) values ('FX test USD', 'cash', 'USD', 1000) returning id into v_usd;
+  insert into public.cash_accounts (name, kind, currency, opening_balance) values ('FX test EGP', 'bank', 'EGP', 0) returning id into v_egp;
+  insert into public.cash_accounts (name, kind, currency, opening_balance) values ('FX test QAR', 'cash', 'QAR', 0) returning id into v_qar;
+  update public.exchange_rates set per_usd = 48 where currency = 'EGP';
+  update public.exchange_rates set per_usd = 48.5 where currency = 'EGP';
+  perform t.ok(public.fx_rate('USD', 'EGP') = 48.5 and round(public.fx_rate('EGP', 'USD'), 6) = round(1 / 48.5, 6), 'currencies are linked through USD (both directions)');
+  perform t.ok((select count(*) >= 1 from public.exchange_rate_history where currency = 'EGP'), 'rate changes are kept in the history');
+  g := public.cash_transfer(v_usd, v_egp, 100);
+  perform t.ok((select amount = 4850 and fx_source = 'auto' and fx_rate = 48.5 from public.cash_entries where transfer_group = g and direction = 'in'), 'transfer USD → EGP uses the automatic rate (100 × 48.5 = 4850)');
+  g := public.cash_transfer(v_usd, v_egp, 100, null, current_date, null, 50);
+  perform t.ok((select amount = 5000 and fx_source = 'manual' from public.cash_entries where transfer_group = g and direction = 'in'), 'the user can change the rate on the transfer (100 × 50)');
+  g := public.cash_transfer(v_usd, v_egp, 100, 4900);
+  perform t.ok((select amount = 4900 and fx_rate = 49 and fx_source = 'manual' from public.cash_entries where transfer_group = g and direction = 'in') and (select fx_rate = 49 from public.cash_entries where transfer_group = g and direction = 'out'), 'or type the received amount — the rate is derived (49) and stored on both vouchers');
+  perform t.ok((select description like '%1 USD = 49.000000 EGP (manual rate)%' from public.cash_entries where transfer_group = g and direction = 'in'), 'the voucher text shows the rate used');
+  begin
+    perform public.cash_transfer(v_usd, v_qar, 10);
+    perform t.ok(false, 'missing rate must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'a currency without a rate needs a typed rate'); end;
+  g := public.cash_transfer(v_usd, v_qar, 10, null, current_date, null, 3.64);
+  perform t.ok((select amount = 36.4 from public.cash_entries where transfer_group = g and direction = 'in'), '…and works once the rate is typed');
+  begin
+    update public.exchange_rates set per_usd = 2 where currency = 'USD';
+    perform t.ok((select per_usd = 1 from public.exchange_rates where currency = 'USD'), 'USD stays the reference (1)');
+  end;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.exchange_rates), 'case manager does not see exchange rates');
+do $$ begin
+  perform public.cash_transfer((select id from public.cash_accounts limit 1), (select id from public.cash_accounts limit 1), 1);
+  perform t.ok(false, 'case manager must not transfer');
+exception when insufficient_privilege then perform t.ok(true, 'case manager cannot transfer between boxes'); end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.exchange_rates), 'agents do not see exchange rates');
+do $$ begin
+  update public.exchange_rates set per_usd = 1 where currency = 'EGP';
+  perform t.ok((select count(*) = 0 from public.exchange_rate_history where new_per_usd = 1 and currency = 'EGP'), 'agents cannot change rates');
+end $$;
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

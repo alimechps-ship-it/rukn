@@ -13,6 +13,9 @@ function reply(res, obj, status = 200) {
 
 http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/__log") return reply(res, log.slice(-50));
+  // Stand-in for the exchange-rates service (FX_API_URL=http://localhost:54400/fx).
+  if (req.method === "GET" && req.url === "/fx") return reply(res, { result: "success", time_last_update_utc: new Date().toUTCString(),
+    rates: { USD: 1, EGP: 50.25, EUR: 0.9, SAR: 3.75, AED: 3.6725, JOD: 0.709, KWD: 0.307, GBP: 0.78, QAR: 3.64 } });
   if (req.method !== "POST" || req.url !== "/v1/messages") return reply(res, { error: { message: "not found" } }, 404);
   if (!req.headers["x-api-key"]) return reply(res, { error: { message: "missing key" } }, 401);
   let raw = "";

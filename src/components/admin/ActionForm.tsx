@@ -30,15 +30,17 @@ export function Flash({ result }: { result: ActionResult }) {
  * by the server, keeps what the user typed (no automatic reset), and refreshes
  * server data after a successful save.
  */
-export function ActionForm({ action, children, className, resetOnSuccess = false, id }: { action: Action; children: ReactNode; className?: string; resetOnSuccess?: boolean; id?: string }) {
+export function ActionForm({ action, children, className, resetOnSuccess = false, id, onSuccess }: { action: Action; children: ReactNode; className?: string; resetOnSuccess?: boolean; id?: string; onSuccess?: () => void }) {
   const [state, formAction, pending] = useActionState(action, null);
   const ref = useRef<HTMLFormElement>(null);
   const router = useRouter();
   useEffect(() => {
     if (!state?.ok) return;
     if (resetOnSuccess) ref.current?.reset();
+    onSuccess?.();
     if (state.redirectTo) router.push(state.redirectTo);
     else router.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, resetOnSuccess, router]);
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {

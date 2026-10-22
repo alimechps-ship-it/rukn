@@ -4,6 +4,8 @@ import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
 import { accountsWithBalance, CASH_KINDS, teamPeople, type CashEntry } from "@/lib/finance";
 import { saveCashAccount, transferCash } from "../../_actions/finance";
+import { TransferForm } from "@/components/admin/TransferForm";
+import { fmtRate, loadRates, ratesMap, refreshAutoRates, totalIn } from "@/lib/fx";
 import { EntriesTable, NewEntryForm } from "../CashForms";
 
 export const metadata = { title: "Cash boxes" };
@@ -12,11 +14,15 @@ const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFrac
 export default async function CashPage() {
   await requireStaff(can.finance);
   const db = await createSessionClient();
-  const [accounts, { people, names }, { data: recent }] = await Promise.all([
+  await refreshAutoRates(db, true); // best effort: keeps automatic rates fresh (max every 12 h)
+  const [accounts, { people, names }, { data: recent }, rates] = await Promise.all([
     accountsWithBalance(db),
     teamPeople(db),
     db.from("cash_entries").select("*").order("created_at", { ascending: false }).limit(40),
+    loadRates(db),
   ]);
+  const fx = ratesMap(rates);
+  const perUsd = Object.fromEntries(fx);
   const accMap = new Map(accounts.map((a) => [a.id, { name: a.name, currency: a.currency }]));
   const totals = new Map<string, number>();
   for (const a of accounts) if (a.active) totals.set(a.currency, (totals.get(a.currency) ?? 0) + a.balance);
@@ -25,7 +31,7 @@ export default async function CashPage() {
     <>
       <div className="topbar">
         <div><h1>Cash boxes · الصناديق</h1><div className="sub">Receipts (سند قبض), payments & withdrawals (سند صرف) and transfers between boxes. Every voucher is numbered and printable.</div></div>
-        <div className="btn-row"><Link className="btn secondary" href="/admin/finance/people">Person accounts · حسابات الأشخاص</Link></div>
+        <div className="btn-row"><Link className="btn secondary" href="/admin/finance/rates">💱 Exchange rates · أسعار الصرف{fx.get("EGP") ? ` (1 USD = ${fmtRate(fx.get("EGP")!)} EGP)` : ""}</Link><Link className="btn secondary" href="/admin/finance/people">Person accounts · حسابات الأشخاص</Link></div>
       </div>
 
       <div className="stats">
@@ -36,7 +42,9 @@ export default async function CashPage() {
             <div className="small muted">{a.custodian ? `Custodian: ${names.get(a.custodian) ?? "—"}` : "Open the statement →"}</div>
           </Link>
         ))}
-        {totals.size ? <div className="stat"><div className="k">Total in all boxes</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{[...totals.entries()].map(([c, v]) => fmt(v, c)).join(" · ")}</div></div> : null}
+        {totals.size ? <div className="stat"><div className="k">Total in all boxes</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{[...totals.entries()].map(([c, v]) => fmt(v, c)).join(" · ")}</div>
+          {totals.size > 1 ? <div className="small muted">≈ {["USD", "EGP"].map((c) => { const t = totalIn(fx, totals, c); return t === null ? `— ${c}` : fmt(t, c); }).join(" · ")} at today&apos;s rates</div> : null}
+        </div> : null}
       </div>
 
       <div className="case-cols">
@@ -53,15 +61,7 @@ export default async function CashPage() {
           </section>
           <section className="panel">
             <h2>Transfer between boxes · تحويل</h2>
-            <ActionForm action={transferCash} className="form-grid" resetOnSuccess>
-              <div className="field"><label htmlFor="tr-from">From · من</label><select id="tr-from" name="from">{accounts.filter((a) => a.active).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></div>
-              <div className="field"><label htmlFor="tr-to">To · إلى</label><select id="tr-to" name="to" defaultValue={accounts.filter((a) => a.active)[1]?.id}>{accounts.filter((a) => a.active).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></div>
-              <div className="field"><label htmlFor="tr-amt">Amount sent *</label><input id="tr-amt" type="number" name="amount" min="0.01" step="0.01" required /></div>
-              <div className="field"><label htmlFor="tr-amt2">Amount received (only if the currency differs)</label><input id="tr-amt2" type="number" name="amount_to" min="0" step="0.01" /></div>
-              <div className="field"><label htmlFor="tr-date">Date</label><input id="tr-date" type="date" name="entry_date" defaultValue={new Date().toISOString().slice(0, 10)} /></div>
-              <div className="field"><label htmlFor="tr-desc">Description</label><input id="tr-desc" type="text" name="description" maxLength={500} placeholder="e.g. deposit cash to bank" /></div>
-              <div className="full"><SubmitButton className="btn secondary">Record transfer</SubmitButton></div>
-            </ActionForm>
+            <TransferForm action={transferCash} boxes={accounts.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, currency: a.currency, balance: a.balance }))} perUsd={perUsd} />
           </section>
         </div>
       </div>

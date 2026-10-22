@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { assertStaff, can } from "@/lib/auth";
 import { createSessionClient, errMessage, str } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
+import { refreshAutoRates } from "@/lib/fx";
 
 const IN_CATS = ["owner_deposit", "advance_return", "other_income"];
 const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "planning", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other"];
@@ -128,14 +129,86 @@ export async function transferCash(_: ActionResult, fd: FormData): Promise<Actio
     const to = String(fd.get("to") ?? "");
     const amount = amountOf(fd.get("amount"));
     const amountTo = amountOf(fd.get("amount_to"));
+    const rate = Number(String(fd.get("rate") ?? "").replace(/,/g, ""));
     if (!UUID.test(from) || !UUID.test(to)) return { ok: false, message: "Choose both cash boxes." };
     if (!(amount > 0)) return { ok: false, message: "Enter the amount." };
+    // The form sends the rate it shows; the received amount only when the user typed it himself.
+    // Both only count when they were made for exactly these two boxes' currencies.
+    const { data: boxes } = await db.from("cash_accounts").select("id,currency").in("id", [from, to]);
+    const cFrom = boxes?.find((x) => x.id === from)?.currency; const cTo = boxes?.find((x) => x.id === to)?.currency;
+    const sameDir = cFrom && cTo && fd.get("rate_from") === cFrom && fd.get("rate_to") === cTo;
+    if (cFrom && cTo && cFrom !== cTo && (fd.get("rate") || fd.get("to_edited") === "1") && !sameDir) {
+      return { ok: false, message: "The boxes changed while the rate was shown — check the rate and send again." };
+    }
+    const typedTo = fd.get("to_edited") === "1" && amountTo > 0;
     const { error } = await db.rpc("cash_transfer", {
-      p_from: from, p_to: to, p_amount: amount, p_amount_to: amountTo > 0 ? amountTo : null,
+      p_from: from, p_to: to, p_amount: amount, p_amount_to: typedTo ? amountTo : null,
       p_date: dateOf(fd, "entry_date"), p_description: str(fd, "description", 500),
+      p_rate: !typedTo && rate > 0 && Number.isFinite(rate) ? rate : null,
     });
     if (error) return { ok: false, message: errMessage(error) };
     refresh();
     return { ok: true, message: "Transfer recorded." };
+  } catch (e) { return fail(e); }
+}
+
+// ---------------------------------------------------------------------------------
+// Exchange rates
+// ---------------------------------------------------------------------------------
+const refreshFx = () => { revalidatePath("/admin/finance/rates"); revalidatePath("/admin/finance/cash"); };
+
+/** Finance: set a currency's rate by hand ("1 USD = x"), optionally locking it against the automatic update. */
+export async function saveRate(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.finance);
+    const db = await createSessionClient();
+    const currency = (str(fd, "currency", 3) ?? "").toUpperCase();
+    const perUsd = Number(String(fd.get("per_usd") ?? "").replace(/,/g, ""));
+    if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, message: "Enter a 3-letter currency code." };
+    if (currency === "USD") return { ok: false, message: "USD is the reference currency (always 1)." };
+    if (!(perUsd > 0) || !Number.isFinite(perUsd)) return { ok: false, message: "Enter how many units equal 1 USD." };
+    const locked = fd.get("locked") === "on";
+    const { error } = await db.from("exchange_rates").upsert({ currency, per_usd: perUsd, source: "manual", locked });
+    if (error) return { ok: false, message: errMessage(error) };
+    refreshFx();
+    return { ok: true, message: `Rate saved: 1 USD = ${perUsd} ${currency}${locked ? " (locked — the automatic update will not change it)" : ""}.` };
+  } catch (e) { return fail(e); }
+}
+
+/** Finance: let the automatic update manage a currency again (unlock). */
+export async function unlockRate(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.finance);
+    const db = await createSessionClient();
+    const currency = String(fd.get("currency") ?? "").toUpperCase();
+    const { error } = await db.from("exchange_rates").update({ locked: false }).eq("currency", currency);
+    if (error) return { ok: false, message: errMessage(error) };
+    const r = await refreshAutoRates(db);
+    refreshFx();
+    return { ok: true, message: `${currency} follows the automatic rate again${r.error ? ` — ${r.error}` : ""}.` };
+  } catch (e) { return fail(e); }
+}
+
+export async function deleteRate(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.finance);
+    const db = await createSessionClient();
+    const currency = String(fd.get("currency") ?? "").toUpperCase();
+    const { error } = await db.from("exchange_rates").delete().eq("currency", currency);
+    if (error) return { ok: false, message: errMessage(error) };
+    refreshFx();
+    return { ok: true, message: `${currency} removed from the rates.` };
+  } catch (e) { return fail(e); }
+}
+
+/** Finance: pull the latest rates from the internet now. */
+export async function updateRatesNow(_: ActionResult, _fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.finance);
+    const db = await createSessionClient();
+    const r = await refreshAutoRates(db);
+    refreshFx();
+    if (r.error) return { ok: false, message: r.error };
+    return { ok: true, message: `Rates updated automatically (${r.updated} currenc${r.updated === 1 ? "y" : "ies"})${r.at ? ` · source time ${r.at}` : ""}.` };
   } catch (e) { return fail(e); }
 }

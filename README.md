@@ -88,6 +88,10 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - Flow: case manager → Case → **Dispatch orders · أذون الصرف** → *+ New dispatch order* → add services from the catalog (no prices) with arch and quantity → *Send to finance*. Number `DO-YY-#####`, printable with signatures.
   - Finance → **To price · بانتظار التسعير** (badge) → *Price & invoice* → a draft invoice is created with the price-list prices → review, *Issue*. The case manager sees only “Priced & invoiced”. He can recall a sent order while it is not yet priced.
   - Finance sets the agreed cost of each work order (work order page → *Agreed cost*).
+- **Exchange rates** (migration `20261022001300_exchange_rates.sql`, Finance → Exchange rates):
+  - Every currency is linked through USD (“1 USD = x”), so any pair (EGP↔SAR, EUR↔EGP…) is derived. Rates update automatically from a free daily service (`open.er-api.com`, at most every 12 h when finance opens the cash pages, or with *Update rates now*); env `FX_API_URL` overrides the source.
+  - Finance can set a rate by hand and **lock** it (the automatic update then leaves it alone) or return it to automatic. Every change is kept in the history (who, when, old → new).
+  - **Transfer between boxes** in different currencies proposes the automatic rate and the received amount; the user can change the rate or type the received amount (the other follows). The rate used and whether it was automatic or manual are stored on both vouchers and printed in their text. Cash page shows the total of all boxes converted to USD and EGP.
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -186,8 +190,9 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (247 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (260 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
+- **Exchange rates** (14 checks: automatic update, locked manual rate, transfers with automatic / edited rate / typed amount, access): see `tests/e2e/fx_flow.py` (run the app with `FX_API_URL=http://localhost:54400/fx` and the mock server).
 - **Case manager / finance separation** (23 checks: menus and pages denied to the case manager, dispatch order → finance queue → priced invoice, no amounts visible to operations): see `tests/e2e/dispatch_flow.py`. The money e2e tests sign in with `FINANCE_EMAIL` / `FINANCE_PASSWORD`.
 - **Agents/case workflow** (28 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
 - **Planners & labs** (32 checks: partner logins, work orders, internal files, bills, payments, statements, isolation): see `tests/e2e/partners_flow.py`.

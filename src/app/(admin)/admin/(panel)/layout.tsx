@@ -89,6 +89,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
         { href: "/admin/statement", label: "Agent statements · كشوف المناديب" },
         { href: "/admin/finance/receivables", label: "Receivables · المستحقات" },
         { href: "/admin/finance/cash", label: "Cash boxes · الصناديق" },
+        { href: "/admin/finance/rates", label: "Exchange rates · أسعار الصرف" },
         { href: "/admin/finance/people", label: "Person accounts · العهد" },
         { href: "/admin/price-list", label: "Price list & billing" },
       ],

@@ -15,6 +15,9 @@ import {
   addCaseComment, addPayment, changeCaseStatus, decidePlan, deleteCaseFile, markDelivered, registerIntake, saveQuote, saveShipment, updateCaseInfo, voidPayment,
 } from "../../_actions/cases";
 import { createInvoice } from "../../_actions/invoices";
+import { confirmReceipt } from "../../_actions/payments";
+import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
+import { NoticesTable, type Notice } from "../../finance/Notices";
 import { INVOICE_STATUS } from "@/lib/invoices";
 import { CaseFormFields } from "../CaseForm";
 
@@ -31,17 +34,18 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const db = await createSessionClient();
   const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, { data: cashBoxes }, services, agents, staffUsers] = await Promise.all([
+  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, { data: cashBoxes }, { data: claims }, services, agents, staffUsers] = await Promise.all([
     db.from("case_files").select("*").eq("case_id", id).order("created_at"),
     db.from("case_events").select("*").eq("case_id", id).order("created_at"),
     db.from("case_payments").select("*").eq("case_id", id).order("created_at"),
     db.from("case_invoices").select("id,invoice_no,status,issue_date,currency,total,revision").eq("case_id", id).order("created_at"),
     staff ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] as { id: string; name: string; currency: string }[] }),
+    db.from("case_payment_claims").select("*").eq("case_id", id).order("created_at", { ascending: false }),
     serviceOptions(db),
     staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([]),
     staff ? peopleWithRole(db, ["case_manager", "super_admin"]) : Promise.resolve([]),
   ]);
-  const people = await profileMap(db, [c.agent_id, c.assigned_to, ...(events ?? []).map((e) => e.author_id), ...(files ?? []).map((f) => f.uploaded_by)]);
+  const people = await profileMap(db, [c.agent_id, c.assigned_to, ...(events ?? []).map((e) => e.author_id), ...(files ?? []).map((f) => f.uploaded_by), ...(claims ?? []).map((n) => n.submitted_by)]);
   const agent = people.get(c.agent_id);
   const status = c.status as CaseStatus;
   const stepIndex = STEPS.indexOf(status === "revision" ? "awaiting_approval" : status);
@@ -51,6 +55,11 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const issuedInvoices = (invoices ?? []).filter((i) => i.status === "issued");
   const paidOn = (invId: string) => (payments ?? []).filter((p) => !p.voided && p.invoice_id === invId).reduce((a, p) => a + Number(p.amount), 0);
   const invNo = new Map((invoices ?? []).map((i) => [i.id, i.invoice_no as string | null]));
+  const pendingNotices = (claims ?? []).filter((n) => n.status === "pending");
+  const hasPlanFile = (files ?? []).some((f) => f.is_deliverable);
+  const invoicesForAgent = issuedInvoices.map((i) => ({ id: i.id as string, invoice_no: i.invoice_no as string, currency: i.currency as string, balance: Math.round((Number(i.total) - paidOn(i.id)) * 100) / 100 }));
+  const receiptNos = new Map((payments ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]));
+  const nameMap = new Map([...people.entries()].map(([k, v]) => [k, v.name]));
 
   return (
     <>
@@ -89,6 +98,36 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
 
       <div className="cols case-cols">
         <div>
+          {/* Receipt confirmations (agent; staff may also record them) */}
+          {status === "shipped" ? (
+            <section className="confirm-box">
+              <h3>📦 Did you receive the shipment? · هل استلمت الشحنة؟</h3>
+              <p className="small muted" style={{ marginTop: 0 }}>Shipped{c.carrier ? ` with ${c.carrier}` : ""}{c.tracking_no ? ` · tracking ${c.tracking_no}` : ""}. Confirming closes the case and issues the delivery note.</p>
+              <ActionForm action={confirmReceipt.bind(null, c.id)} className="form-grid">
+                <input type="hidden" name="what" value="shipment" />
+                <Text name="name" label="Received by (name) · اسم المستلم" required defaultValue={c.doctor_name} maxLength={120} />
+                <Text name="notes" label="Condition / notes · ملاحظات" maxLength={1000} />
+                <div className="full"><SubmitButton className="btn teal" pendingText="Confirming…">✓ Confirm receipt of shipment · تأكيد الاستلام</SubmitButton></div>
+              </ActionForm>
+            </section>
+          ) : null}
+          {hasPlanFile && !c.plan_received_at && !staff ? (
+            <section className="confirm-box">
+              <h3>📄 Treatment plan received? · هل استلمت الخطة العلاجية؟</h3>
+              <p className="small muted" style={{ marginTop: 0 }}>RUKN sent the plan files listed below (marked “from RUKN”). Confirm once you and the doctor received them.</p>
+              <ActionForm action={confirmReceipt.bind(null, c.id)} className="form-grid">
+                <input type="hidden" name="what" value="plan" />
+                <Text name="name" label="Received by (name)" required defaultValue={c.doctor_name} maxLength={120} />
+                <Text name="notes" label="Notes" maxLength={1000} />
+                <div className="full"><SubmitButton className="btn secondary" pendingText="Confirming…">✓ Confirm plan received · تأكيد استلام الخطة</SubmitButton></div>
+              </ActionForm>
+            </section>
+          ) : null}
+          {c.plan_received_at ? <div className="flash ok">Treatment plan received by {c.plan_received_by} · {fmtDate(c.plan_received_at)}</div> : null}
+          {staff && pendingNotices.length ? (
+            <a href="#payments" className="flash warn" style={{ display: "block", textDecoration: "none" }}>💳 {pendingNotices.length} payment notice(s) from the agent awaiting your confirmation — review below ↓</a>
+          ) : null}
+
           {/* Agent: approval of the plan */}
           {status === "awaiting_approval" ? (
             <section className="panel highlight">
@@ -253,7 +292,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
             ) : <p className="small muted">{staff ? "No invoice yet. Press “New invoice” and add aligners, Snap-On, retainers… from the price list." : "No invoice issued yet."}</p>}
           </section>
 
-          <section className="panel">
+          <section className="panel" id="payments">
             <h2>Quotation & payments · السعر والمدفوعات</h2>
             <dl className="kv">
               <dt>Quoted price</dt><dd><strong>{fmtMoney(c.quote_amount, c.quote_currency)}</strong></dd>
@@ -277,6 +316,16 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                   ))}
                 </tbody>
               </table>
+            ) : null}
+            <h3 style={{ margin: "16px 0 8px", fontSize: "1rem" }}>{staff ? "Payment notices from the agent" : "Your payment notices"} · إشعارات الدفع</h3>
+            <NoticesTable notices={(claims ?? []) as Notice[]} staff={staff} boxes={(cashBoxes ?? []) as { id: string; name: string; currency: string }[]}
+              invoiceNos={new Map([...invNo.entries()].filter(([, v]) => v) as [string, string][])} receiptNos={receiptNos} names={nameMap} />
+            {!staff && status !== "cancelled" ? (
+              <details style={{ marginTop: 12 }} open={pendingNotices.length === 0 && invoicesForAgent.some((i) => i.balance > 0)}>
+                <summary><strong>💳 I sent a payment · إرسال دفعة للشركة</strong></summary>
+                <p className="small muted">Tell RUKN about a transfer you made. Attach a photo or PDF of the transfer receipt — RUKN confirms it and issues the official receipt.</p>
+                <PaymentNoticeForm caseId={c.id} invoices={invoicesForAgent} defaultCurrency={c.quote_currency ?? "USD"} />
+              </details>
             ) : null}
             {staff ? (
               <>

@@ -34,6 +34,8 @@ export const FILE_CATEGORIES: Record<string, { en: string; ar: string }> = {
   xray: { en: "Radiographs", ar: "صور أشعة" },
   prescription: { en: "Prescription / form", ar: "وصفة / نموذج" },
   treatment_plan: { en: "Treatment plan", ar: "الخطة العلاجية" },
+  payment_proof: { en: "Payment proof", ar: "إثبات دفع" },
+  delivery_proof: { en: "Delivery proof", ar: "إثبات استلام" },
   other: { en: "Other", ar: "أخرى" },
 };
 

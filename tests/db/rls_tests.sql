@@ -678,6 +678,107 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.cash_entries), 'sales manager cannot see the cash book');
 reset role;
 
+-- =====================================================================
+-- AGENT CONFIRMATIONS & PAYMENT NOTICES
+-- =====================================================================
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+insert into public.cases (agent_id, clinic_name, doctor_name, country_code, patient_ref)
+  values ('00000000-0000-0000-0000-0000000000a1', 'Nile Clinic', 'Dr. Hany', 'EG', 'P-002');
+do $$ begin
+  perform public.confirm_case_receipt((select id from public.cases where patient_ref = 'P-002'), 'shipment', 'Dr. Hany');
+  perform t.ok(false, 'cannot confirm before shipping');
+exception when invalid_parameter_value then perform t.ok(true, 'agent cannot confirm a shipment that was not shipped'); end $$;
+do $$ begin
+  perform public.confirm_case_receipt((select id from public.cases where patient_ref = 'P-002'), 'plan', 'Dr. Hany');
+  perform t.ok(false, 'cannot confirm plan without file');
+exception when invalid_parameter_value then perform t.ok(true, 'agent cannot confirm a plan RUKN has not sent'); end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ declare v_inv uuid; v_case uuid; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  insert into public.case_files (case_id, storage_path, filename, size_bytes, category, is_deliverable)
+    values (v_case, v_case || '/plan.pdf', 'plan.pdf', 1000, 'treatment_plan', true);
+  update public.cases set status = 'shipped', carrier = 'DHL' where id = v_case;
+  insert into public.case_invoices (case_id, currency) values (v_case, 'USD') returning id into v_inv;
+  insert into public.case_invoice_items (invoice_id, description, qty, unit_price) values (v_inv, 'Clear aligners', 1, 100);
+  update public.case_invoices set status = 'issued' where id = v_inv;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+do $$ declare v_case uuid; v_no text; v_claim uuid; r record; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  perform public.confirm_case_receipt(v_case, 'plan', 'Dr. Hany', 'Received by e-mail');
+  perform t.ok((select plan_received_by = 'Dr. Hany' and plan_received_at is not null from public.cases where id = v_case), 'agent confirms the treatment plan was received');
+  v_no := public.confirm_case_receipt(v_case, 'shipment', 'Dr. Hany', 'Box in good condition');
+  select * into r from public.cases where id = v_case;
+  perform t.ok(v_no ~ '^DN-[0-9]{2}-[0-9]{5}$' and r.status = 'delivered' and r.received_by_name = 'Dr. Hany' and r.delivery_notes = 'Box in good condition',
+               'agent confirms the shipment: case delivered, delivery note ' || coalesce(v_no, '?'));
+  update public.cases set received_by_name = 'Someone else', status = 'submitted' where id = v_case;
+  perform t.ok(false, 'agent must not edit a delivered case');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot edit the case directly after delivery'); end $$;
+do $$ declare v_case uuid; v_inv uuid; r record; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  select id into v_inv from public.case_invoices where case_id = v_case;
+  insert into public.case_payment_claims (case_id, invoice_id, amount, currency, method, reference, status, payment_id)
+    values (v_case, v_inv, 60, 'EUR', 'bank_transfer', 'TRX-778', 'accepted', null);
+  select * into r from public.case_payment_claims where case_id = v_case;
+  perform t.ok(r.notice_no ~ '^PN-[0-9]{2}-[0-9]{5}$' and r.status = 'pending' and r.currency = 'USD' and r.submitted_by = auth.uid(),
+               'agent sends a payment notice: numbered, pending, currency of the invoice');
+  perform t.ok((select count(*) = 1 from public.case_events where case_id = v_case and body like 'Payment notice PN-%sent%'), 'the notice is logged on the timeline');
+  insert into public.case_payment_claims (case_id, amount, currency, method) values (v_case, 40, 'USD', 'cash');
+  insert into public.case_payment_claims (case_id, amount, currency, method) values (v_case, 5, 'USD', 'other');
+  perform public.cancel_payment_claim((select id from public.case_payment_claims where case_id = v_case and amount = 5));
+  perform t.ok((select status = 'cancelled' from public.case_payment_claims where case_id = v_case and amount = 5), 'agent can withdraw his pending notice');
+end $$;
+do $$ begin
+  update public.case_payment_claims set status = 'accepted';
+  perform t.ok(false, 'agent must not change notices');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot mark his own notice as accepted'); end $$;
+do $$ begin
+  perform public.accept_payment_claim((select id from public.case_payment_claims where amount = 60));
+  perform t.ok(false, 'agent must not accept');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot confirm payments'); end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_payment_claims), 'agent 2 cannot see agent 1 payment notices');
+do $$ begin
+  insert into public.case_payment_claims (case_id, amount, currency, method) values ((select id from public.cases limit 1), 1, 'USD', 'cash');
+  perform t.ok(false, 'agent 2 has no case id');
+exception when not_null_violation or insufficient_privilege then perform t.ok(true, 'agent 2 cannot send notices on agent 1 cases'); end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ declare v_case uuid; v_rc text; usd uuid; r record; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  select id into usd from public.cash_accounts where name = 'USD cash box';
+  v_rc := public.accept_payment_claim((select id from public.case_payment_claims where case_id = v_case and amount = 60), usd, null, 'Bank confirmed');
+  select * into r from public.case_payment_claims where case_id = v_case and amount = 60;
+  perform t.ok(v_rc ~ '^RC-' and r.status = 'accepted' and r.payment_id is not null, 'case manager accepts the notice: receipt ' || v_rc);
+  perform t.ok((select invoice_id is not null and amount = 60 and currency = 'USD' from public.case_payments where id = r.payment_id), 'the receipt is applied to the invoice');
+  perform t.ok((select count(*) = 1 from public.cash_entries where case_payment_id = r.payment_id and direction = 'in' and amount = 60), 'the money is deposited in the chosen cash box');
+  begin
+    perform public.accept_payment_claim(r.id, usd);
+    perform t.ok(false, 'double accept');
+  exception when invalid_parameter_value then perform t.ok(true, 'a notice cannot be accepted twice'); end;
+  perform public.reject_payment_claim((select id from public.case_payment_claims where case_id = v_case and amount = 40), 'Transfer not received yet');
+  perform t.ok((select status = 'rejected' and review_note = 'Transfer not received yet' from public.case_payment_claims where case_id = v_case and amount = 40), 'case manager rejects a notice with a reason');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-002' and e.body like '%not accepted: Transfer not received yet'), 'agent sees why his notice was rejected');
+select t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-002' and e.body like '%confirmed — receipt RC-%'), 'agent sees the confirmation and receipt number');
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

@@ -270,16 +270,16 @@ export async function registerCaseFile(input: { caseId: string; path: string; fi
     if (!FILE_EXTENSIONS.includes(ext)) return { ok: false, message: `File type .${ext} is not accepted.` };
     if (input.size > MAX_FILE_BYTES) return { ok: false, message: "File is larger than 50 MB." };
     if (!input.path.startsWith(`${input.caseId}/`)) return { ok: false, message: "Invalid upload path." };
-    const { error } = await db.from("case_files").insert({
+    const { data: row, error } = await db.from("case_files").insert({
       case_id: input.caseId, storage_path: input.path, filename: input.filename.slice(0, 200), size_bytes: input.size,
       mime_type: input.mime.slice(0, 120) || null, category: input.category in FILE_CATEGORIES ? input.category : "other",
       is_deliverable: input.deliverable,
-    });
+    }).select("id").single();
     if (error) {
       await db.storage.from("case-files").remove([input.path]);
       return { ok: false, message: errMessage(error, "The file could not be registered") };
     }
-    return { ok: true, message: "Uploaded." };
+    return { ok: true, message: "Uploaded.", fileId: row.id as string };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Unexpected error." };
   }

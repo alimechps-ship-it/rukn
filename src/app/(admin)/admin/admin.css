@@ -197,3 +197,14 @@ a.stat-link { text-decoration: none; color: inherit; transition: border-color .1
 a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,128,154,.12); }
 .aging-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--line); margin-top: 8px; }
 .aging-bar span { display: block; height: 100%; }
+
+/* ---- Payment notices ---- */
+.notice-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.notice { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #fff; }
+.notice.pending { border-color: #f5b100; background: #fffbeb; }
+.notice.rejected, .notice.cancelled { opacity: .75; }
+.notice-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.notice-amount { font-size: 1.15rem; font-weight: 700; color: var(--navy); white-space: nowrap; }
+.notice-review { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e5c56a; }
+.confirm-box { border: 2px solid var(--teal); background: #f2fafc; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+.confirm-box h3 { margin: 0 0 6px; color: var(--navy); font-size: 1rem; }

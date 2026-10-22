@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { checkReceipt } from "@/lib/ai-receipt";
+import { isAiConfigured } from "@/lib/ai";
 import { assertStaff, can } from "@/lib/auth";
 import { createSessionClient, errMessage, str } from "@/lib/admin";
 import { PAYMENT_METHODS } from "@/lib/cases";
@@ -34,7 +38,7 @@ export async function submitPaymentNotice(input: {
   caseId: string; invoiceId: string | null; amount: number; currency: string; method: string; paidAt: string; reference: string; notes: string; proofFileId: string | null;
 }): Promise<{ ok: boolean; message: string }> {
   try {
-    await assertStaff(can.cases);
+    const user = await assertStaff(can.cases);
     const db = await createSessionClient();
     const amount = Math.round(Number(input.amount) * 100) / 100;
     const currency = String(input.currency ?? "").trim().toUpperCase();
@@ -49,8 +53,13 @@ export async function submitPaymentNotice(input: {
       reference: input.reference?.trim().slice(0, 120) || null,
       notes: input.notes?.trim().slice(0, 500) || null,
       proof_file_id: input.proofFileId && UUID.test(input.proofFileId) ? input.proofFileId : null,
-    }).select("notice_no").single();
+    }).select("id,notice_no").single();
     if (error) return { ok: false, message: errMessage(error) };
+    // Read the receipt with AI in the background (needs the server service key).
+    const svc = createServiceClient();
+    if (svc && isAiConfigured() && input.proofFileId) {
+      after(async () => { await checkReceipt(svc, data.id as string, user.id).catch(() => undefined); });
+    }
     refresh(input.caseId);
     return { ok: true, message: `Payment notice ${data.notice_no} sent. RUKN will confirm it after checking the transfer.` };
   } catch (e) { return fail(e) as { ok: boolean; message: string }; }
@@ -95,5 +104,16 @@ export async function rejectPaymentNotice(_: ActionResult, fd: FormData): Promis
     if (error) return { ok: false, message: errMessage(error) };
     refresh(String(fd.get("case_id") ?? ""));
     return { ok: true, message: "Payment notice rejected — the agent sees your reason on the case." };
+  } catch (e) { return fail(e); }
+}
+
+/** Case staff: (re)read the attached transfer receipt with AI. */
+export async function recheckReceipt(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    const user = await assertStaff(can.caseStaff);
+    const db = await createSessionClient();
+    const res = await checkReceipt(db, String(fd.get("id")), user.id);
+    refresh(String(fd.get("case_id") ?? ""));
+    return { ok: res.ok, message: res.message };
   } catch (e) { return fail(e); }
 }

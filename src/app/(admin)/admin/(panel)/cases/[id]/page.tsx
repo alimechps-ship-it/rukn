@@ -18,6 +18,7 @@ import { createInvoice } from "../../_actions/invoices";
 import { confirmReceipt } from "../../_actions/payments";
 import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
 import { NoticesTable, type Notice } from "../../finance/Notices";
+import { isAiConfigured } from "@/lib/ai";
 import { INVOICE_STATUS } from "@/lib/invoices";
 import { CaseFormFields } from "../CaseForm";
 
@@ -319,7 +320,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
             ) : null}
             <h3 style={{ margin: "16px 0 8px", fontSize: "1rem" }}>{staff ? "Payment notices from the agent" : "Your payment notices"} · إشعارات الدفع</h3>
             <NoticesTable notices={(claims ?? []) as Notice[]} staff={staff} boxes={(cashBoxes ?? []) as { id: string; name: string; currency: string }[]}
-              invoiceNos={new Map([...invNo.entries()].filter(([, v]) => v) as [string, string][])} receiptNos={receiptNos} names={nameMap} />
+              invoiceNos={new Map([...invNo.entries()].filter(([, v]) => v) as [string, string][])} receiptNos={receiptNos} names={nameMap} aiEnabled={staff && isAiConfigured()} />
             {!staff && status !== "cancelled" ? (
               <details style={{ marginTop: 12 }} open={pendingNotices.length === 0 && invoicesForAgent.some((i) => i.balance > 0)}>
                 <summary><strong>💳 I sent a payment · إرسال دفعة للشركة</strong></summary>

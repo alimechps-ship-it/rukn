@@ -779,6 +779,43 @@ select t.ok((select count(*) = 1 from public.case_events e join public.cases c o
 select t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-002' and e.body like '%confirmed — receipt RC-%'), 'agent sees the confirmation and receipt number');
 reset role;
 
+-- =====================================================================
+-- AI
+-- =====================================================================
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+do $$ declare v_case uuid; v_id uuid; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  insert into public.case_payment_claims (case_id, amount, currency, method, ai_status, ai_summary)
+    values (v_case, 77, 'USD', 'cash', 'match', 'fake') returning id into v_id;
+  perform t.ok((select ai_status is null and ai_summary is null from public.case_payment_claims where id = v_id), 'agent cannot pre-fill the AI check of his notice');
+  begin
+    perform public.set_claim_ai(v_id, 'match', '{}'::jsonb, 'looks fine');
+    perform t.ok(false, 'agent must not set AI result');
+  exception when insufficient_privilege then perform t.ok(true, 'agent cannot write the AI result'); end;
+  insert into public.ai_usage (user_id, feature, input_tokens) values (auth.uid(), 'assistant', 10);
+  begin
+    insert into public.ai_usage (user_id, feature) values ('00000000-0000-0000-0000-0000000000c1', 'assistant');
+    perform t.ok(false, 'cannot log usage for others');
+  exception when insufficient_privilege then perform t.ok(true, 'AI usage can only be logged for oneself'); end;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ declare v_id uuid; begin
+  select id into v_id from public.case_payment_claims where amount = 77;
+  perform public.set_claim_ai(v_id, 'mismatch', '{"amount": 70}'::jsonb, 'Amount on receipt 70 ≠ 77');
+  perform t.ok((select ai_status = 'mismatch' and (ai_extracted ->> 'amount')::numeric = 70 from public.case_payment_claims where id = v_id), 'case staff store the AI check of a receipt');
+  perform t.ok((select count(*) = 0 from public.ai_usage), 'case manager does not see other users AI usage');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) >= 1 from public.ai_usage), 'super admin sees AI usage (cost control)');
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

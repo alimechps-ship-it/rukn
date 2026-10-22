@@ -50,6 +50,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     groups.push({
       label: "Finance · المالية",
       items: [
+        { href: "/admin/assistant", label: "AI assistant · المساعد الذكي" },
         { href: "/admin/finance/notices", label: "Payment notices · إشعارات الدفع", badge: pendingNotices ?? 0 },
         { href: "/admin/statement", label: "Agent statements · كشوف المناديب" },
         { href: "/admin/finance/receivables", label: "Receivables · المستحقات" },

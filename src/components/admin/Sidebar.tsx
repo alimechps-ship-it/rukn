@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Activity, BarChart3, FilePlus2, FolderKanban, FileText, HelpCircle, Image as ImageIcon, Inbox, Languages, LayoutDashboard, Megaphone, Menu as MenuIcon,
-  BellRing, HandCoins, Receipt, ScrollText, Settings, Stethoscope, Tags, Trash2, UserCog, Users, Wallet,
+  BellRing, HandCoins, Receipt, ScrollText, Sparkles, Settings, Stethoscope, Tags, Trash2, UserCog, Users, Wallet,
 } from "lucide-react";
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
@@ -13,7 +13,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/admin/team": Users, "/admin/navigation": MenuIcon, "/admin/announcements": Megaphone, "/admin/strings": Languages,
   "/admin/media": ImageIcon, "/admin/trash": Trash2, "/admin/inquiries": Inbox, "/admin/settings": Settings,
   "/admin/users": UserCog, "/admin/activity": Activity,
-  "/admin/cases": FolderKanban, "/admin/cases/new": FilePlus2, "/admin/reports": BarChart3, "/admin/price-list": Tags, "/admin/finance/receivables": Receipt, "/admin/finance/cash": Wallet, "/admin/finance/people": HandCoins, "/admin/finance/notices": BellRing, "/admin/statement": ScrollText,
+  "/admin/cases": FolderKanban, "/admin/cases/new": FilePlus2, "/admin/reports": BarChart3, "/admin/price-list": Tags, "/admin/finance/receivables": Receipt, "/admin/finance/cash": Wallet, "/admin/finance/people": HandCoins, "/admin/finance/notices": BellRing, "/admin/statement": ScrollText, "/admin/assistant": Sparkles,
 };
 
 export interface NavGroup { label: string; items: { href: string; label: string; badge?: number }[] }

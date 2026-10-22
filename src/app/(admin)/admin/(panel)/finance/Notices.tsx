@@ -2,7 +2,14 @@ import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
-import { acceptPaymentNotice, cancelPaymentNotice, rejectPaymentNotice } from "../_actions/payments";
+import { acceptPaymentNotice, cancelPaymentNotice, recheckReceipt, rejectPaymentNotice } from "../_actions/payments";
+
+const AI_TONE: Record<string, { cls: string; en: string }> = {
+  match: { cls: "ai-ok", en: "AI check: matches" },
+  mismatch: { cls: "ai-warn", en: "AI check: differences found" },
+  unreadable: { cls: "ai-muted", en: "AI check: not readable" },
+  error: { cls: "ai-muted", en: "AI check failed" },
+};
 
 export const NOTICE_STATUS: Record<string, { en: string; ar: string; tone: string }> = {
   pending: { en: "Awaiting confirmation", ar: "بانتظار التأكيد", tone: "changes" },
@@ -15,11 +22,13 @@ export interface Notice {
   id: string; notice_no: string; case_id: string; invoice_id: string | null; amount: number; currency: string; method: string; paid_at: string;
   reference: string | null; notes: string | null; proof_file_id: string | null; status: string; submitted_by: string | null;
   reviewed_at: string | null; review_note: string | null; payment_id: string | null; created_at: string;
+  ai_status?: string | null; ai_summary?: string | null; ai_checked_at?: string | null;
 }
 
-export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, receiptNos, names, showCase }: {
+export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, receiptNos, names, showCase, aiEnabled = false }: {
   notices: Notice[]; staff: boolean; boxes: { id: string; name: string; currency: string }[];
   caseCodes?: Map<string, string>; invoiceNos: Map<string, string>; receiptNos: Map<string, { no: string; id: string }>; names: Map<string, string>; showCase?: boolean;
+  aiEnabled?: boolean;
 }) {
   if (!notices.length) return <p className="small muted">No payment notices yet.</p>;
   return (
@@ -46,6 +55,19 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
               {receipt ? <a className="btn secondary small" href={`/admin/print/case/${n.case_id}/receipt?p=${receipt.id}`} target="_blank" rel="noopener">🖨 Receipt {receipt.no}</a> : null}
               {!staff && n.status === "pending" ? <ConfirmAction action={cancelPaymentNotice} hidden={{ id: n.id, case_id: n.case_id }} label="Withdraw" title="Withdraw this payment notice?" message="Use this if the amount or details were wrong; then send a new notice." confirmLabel="Withdraw" /> : null}
             </div>
+            {staff && n.ai_status ? (
+              <div className={`ai-box ${AI_TONE[n.ai_status]?.cls ?? ""}`}>
+                <strong>🤖 {AI_TONE[n.ai_status]?.en}</strong>
+                <div dir="auto">{n.ai_summary}</div>
+              </div>
+            ) : null}
+            {staff && aiEnabled && n.proof_file_id && n.status === "pending" ? (
+              <ActionForm action={recheckReceipt} className="inline-ai">
+                <input type="hidden" name="id" value={n.id} />
+                <input type="hidden" name="case_id" value={n.case_id} />
+                <SubmitButton className="btn secondary small" pendingText="Reading the receipt…">🤖 {n.ai_status ? "Re-check" : "Check"} receipt with AI</SubmitButton>
+              </ActionForm>
+            ) : null}
             {n.review_note && n.status !== "pending" ? <div className="small" style={{ marginTop: 4 }}><strong>{n.status === "rejected" ? "Reason:" : "Note:"}</strong> {n.review_note}</div> : null}
             {staff && n.status === "pending" ? (
               <div className="notice-review">

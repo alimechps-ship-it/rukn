@@ -71,6 +71,10 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
   - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The case manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.
   - **Account statements**: every agent sees *My account* (invoices, payments, balance, pending notices; printable); case staff see all agents.
+- **AI tools** (optional, migration `20261022001000_ai.sql`, env `ANTHROPIC_API_KEY`):
+  - **AI assistant** (Finance → AI assistant, case staff only): questions in Arabic/English answered from live data through read-only tools (cases, stats, receivables, agent balances, cash boxes, person accounts, payment notices). Queries run with the user's session, so RLS applies. Daily limit per user (`AI_DAILY_LIMIT`), every request logged in `ai_usage`.
+  - **Receipt reader**: when an agent attaches a transfer receipt (image/PDF) to a payment notice, it is read in the background and compared with the notice (amount, currency, date, reference) → "matches" / "differences found" shown to case staff only; "Re-check with AI" button. It never accepts or rejects by itself.
+  - Local tests use `tests/e2e/mock-anthropic.mjs` (set `ANTHROPIC_BASE_URL=http://localhost:54400`).
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -169,9 +173,10 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (173 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (179 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
+- **AI tools** (10 checks with the mock API): see `tests/e2e/ai_flow.py`.
 - **Agent payments** (20 checks: receipt confirmations, payment notices with proof, confirm/reject, statements): see `tests/e2e/agent_payments_flow.py`.
 - **Finance** (21 checks: invoice revision, receivables, cash boxes, vouchers, person accounts): see `tests/e2e/finance_flow.py`.
 - **Invoices** (20 checks: price list, draft/issue/void, totals, payments, prints, agent isolation): see `tests/e2e/invoices_flow.py`.

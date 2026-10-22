@@ -3,6 +3,7 @@ import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { NoticesTable, type Notice } from "../Notices";
+import { isAiConfigured } from "@/lib/ai";
 
 export const metadata = { title: "Payment notices" };
 
@@ -29,7 +30,7 @@ export default async function NoticesPage({ searchParams }: { searchParams: Prom
   const invoiceNos = new Map((invs ?? []).map((i) => [i.id as string, i.invoice_no as string]));
   const receiptNos = new Map((pays ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]));
   const names = new Map([...people.entries()].map(([k, v]) => [k, v.name]));
-  const props = { staff: true, boxes: (boxes ?? []) as { id: string; name: string; currency: string }[], caseCodes, invoiceNos, receiptNos, names, showCase: true };
+  const props = { staff: true, boxes: (boxes ?? []) as { id: string; name: string; currency: string }[], caseCodes, invoiceNos, receiptNos, names, showCase: true, aiEnabled: isAiConfigured() };
   return (
     <>
       <div className="topbar"><div><h1>Payment notices · إشعارات الدفع</h1><div className="sub">Transfers the agents say they sent. Check the money arrived, then confirm — the receipt is issued and the amount goes into the cash box you choose.</div></div></div>

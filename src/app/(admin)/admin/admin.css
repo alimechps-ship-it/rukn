@@ -193,3 +193,7 @@ table.data th.num, table.data td.num { text-align: end; font-variant-numeric: ta
 .inv-lines td.line-actions { width: 34px; padding-inline: 4px; }
 .inv-lines td.line-actions .icon-btn { display: block; margin: 0 0 4px; }
 .inv-lines input[type=number] { padding-inline: 8px; }
+a.stat-link { text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,128,154,.12); }
+.aging-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--line); margin-top: 8px; }
+.aging-bar span { display: block; height: 100%; }

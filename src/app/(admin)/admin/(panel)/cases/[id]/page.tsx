@@ -31,11 +31,12 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const db = await createSessionClient();
   const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, services, agents, staffUsers] = await Promise.all([
+  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, { data: cashBoxes }, services, agents, staffUsers] = await Promise.all([
     db.from("case_files").select("*").eq("case_id", id).order("created_at"),
     db.from("case_events").select("*").eq("case_id", id).order("created_at"),
     db.from("case_payments").select("*").eq("case_id", id).order("created_at"),
-    db.from("case_invoices").select("id,invoice_no,status,issue_date,currency,total").eq("case_id", id).order("created_at"),
+    db.from("case_invoices").select("id,invoice_no,status,issue_date,currency,total,revision").eq("case_id", id).order("created_at"),
+    staff ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] as { id: string; name: string; currency: string }[] }),
     serviceOptions(db),
     staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([]),
     staff ? peopleWithRole(db, ["case_manager", "super_admin"]) : Promise.resolve([]),
@@ -236,13 +237,13 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                   {(invoices ?? []).map((inv) => (
                     <tr key={inv.id} style={inv.status === "void" ? { opacity: 0.55 } : undefined}>
                       <td>
-                        <Link className="mono" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{inv.invoice_no ?? "Draft"}</Link>
+                        <Link className="mono" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{inv.invoice_no ?? "Draft"}</Link>{inv.revision ? <span className="small muted"> rev. {inv.revision}</span> : null}
                         <div><span className={`pill ${INVOICE_STATUS[inv.status].tone}`}>{INVOICE_STATUS[inv.status].en} · {INVOICE_STATUS[inv.status].ar}</span> <span className="small muted">{fmtDay(inv.issue_date)}</span></div>
                       </td>
                       <td className="num">{fmtMoney(inv.total, inv.currency)}</td>
                       <td className="num">{inv.status === "issued" ? <strong>{fmtMoney(Number(inv.total) - paidOn(inv.id), inv.currency)}</strong> : "—"}</td>
                       <td className="actions nowrap">
-                        <Link className="btn secondary small" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{staff && inv.status === "draft" ? "Edit" : "Open"}</Link>{" "}
+                        <Link className="btn secondary small" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{staff && inv.status !== "void" ? "Edit" : "Open"}</Link>{" "}
                         <a className="btn secondary small" href={`/admin/print/invoice/${inv.id}`} target="_blank" rel="noopener">🖨</a>
                       </td>
                     </tr>
@@ -299,6 +300,11 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                     <Select name="method" label="Method" defaultValue="bank_transfer" options={Object.entries(PAYMENT_METHODS).map(([k, m]) => ({ value: k, label: m.en }))} />
                     <Text name="paid_at" label="Date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
                     <Text name="reference" label="Reference (transfer no.)" maxLength={120} />
+                    {(cashBoxes ?? []).length ? (
+                      <Select name="cash_account_id" label="Deposit into cash box · إيداع في صندوق" full defaultValue=""
+                        hint="Optional — the box must be in the same currency as the payment. A receipt voucher (CR-) is added to the box automatically."
+                        options={[{ value: "", label: "— do not deposit (record only) —" }, ...(cashBoxes ?? []).map((b) => ({ value: b.id, label: `${b.name} (${b.currency})` }))]} />
+                    ) : null}
                     <Text name="notes" label="Notes" maxLength={500} />
                     <div className="full"><SubmitButton className="btn teal">Record payment</SubmitButton></div>
                   </ActionForm>

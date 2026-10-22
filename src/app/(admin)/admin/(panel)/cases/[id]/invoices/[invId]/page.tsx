@@ -11,7 +11,7 @@ import { deleteInvoice, saveInvoice, voidInvoice } from "../../../../_actions/in
 
 export const metadata = { title: "Invoice" };
 
-export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string; invId: string }>; searchParams: Promise<{ issued?: string }> }) {
+export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string; invId: string }>; searchParams: Promise<{ issued?: string; revised?: string; was?: string }> }) {
   const { id, invId } = await params;
   const sp = await searchParams;
   const user = await requireStaff(can.cases);
@@ -25,7 +25,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const [{ data: items }, { data: payments }, { data: catalog }] = await Promise.all([
     db.from("case_invoice_items").select("*").eq("invoice_id", invId).order("sort_order"),
     db.from("case_payments").select("*").eq("invoice_id", invId).order("created_at"),
-    staff && inv.status === "draft"
+    staff && inv.status !== "void"
       ? db.from("case_price_items").select("*").eq("active", true).order("sort_order").order("code")
       : Promise.resolve({ data: [] as PriceItem[] }),
   ]);
@@ -36,12 +36,38 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     arch: l.arch, unit: l.unit, qty: Number(l.qty), unit_price: Number(l.unit_price),
   }));
 
+  const paymentsPanel = (
+            <section className="panel">
+              <h2>Payments on this invoice · المدفوعات</h2>
+              {(payments ?? []).length ? (
+                <table className="data"><tbody>{(payments ?? []).map((p) => (
+                  <tr key={p.id} style={p.voided ? { opacity: 0.5 } : undefined}>
+                    <td className="mono">{p.receipt_no}{p.voided ? " (void)" : ""}</td><td>{fmtMoney(p.amount, p.currency)}</td>
+                    <td className="small">{PAYMENT_METHODS[p.method]?.en} · {fmtDay(p.paid_at)}</td>
+                    <td><a className="btn secondary small" href={`/admin/print/case/${id}/receipt?p=${p.id}`} target="_blank" rel="noopener">🖨</a></td>
+                  </tr>
+                ))}</tbody></table>
+              ) : <p className="small muted">No payments yet.{staff && inv.status === "issued" ? " Record one from the case page (Quotation & payments)." : ""}</p>}
+            </section>
+  );
+  const voidPanel = (
+    <section className="panel">
+      <h2>Void invoice · إلغاء الفاتورة</h2>
+      <p className="small muted">To cancel the invoice completely, void it. It stays on record with a VOID mark and its payments remain listed.</p>
+      <ActionForm action={voidInvoice}>
+        <input type="hidden" name="id" value={inv.id} />
+        <div className="field"><label htmlFor="void-reason">Reason *</label><input id="void-reason" type="text" name="reason" maxLength={300} required /></div>
+        <SubmitButton className="btn danger">Void invoice</SubmitButton>
+      </ActionForm>
+    </section>
+  );
+
   return (
     <>
       <div className="topbar">
         <div>
           <div className="small"><Link href={`/admin/cases/${id}`}>← {c.code}</Link></div>
-          <h1>{inv.invoice_no ? <span className="mono">{inv.invoice_no}</span> : "Draft invoice"} <span className={`pill ${st.tone}`}>{st.en} · {st.ar}</span></h1>
+          <h1>{inv.invoice_no ? <span className="mono">{inv.invoice_no}</span> : "Draft invoice"} <span className={`pill ${st.tone}`}>{st.en} · {st.ar}</span>{inv.revision ? <span className="pill changes" style={{ marginInlineStart: 6 }}>rev. {inv.revision}</span> : null}</h1>
           <div className="sub">{c.clinic_name} · {c.doctor_name} · patient {c.patient_ref}{c.service_label ? ` · ${c.service_label}` : ""}</div>
         </div>
         <div className="btn-row">
@@ -49,12 +75,18 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           {staff && inv.status === "draft" ? <ConfirmAction action={deleteInvoice} hidden={{ id: inv.id }} danger label="Delete draft" title="Delete this draft?" message="The draft and its lines are removed. Issued invoices are never deleted." confirmLabel="Delete" /> : null}
         </div>
       </div>
-      {sp.issued ? <div className="flash ok">Invoice {inv.invoice_no} issued — it is now locked and visible to the agent. Print it or record a payment against it on the case page.</div> : null}
+      {sp.revised ? <div className="flash ok">Invoice {inv.invoice_no} updated — revision {sp.revised}. Total {sp.was ?? ""} → {Number(inv.total).toFixed(2)} {inv.currency}. The change is on the case timeline.</div> : null}
+      {sp.issued ? <div className="flash ok">Invoice {inv.invoice_no} issued — it is now visible to the agent. Print it or record a payment against it on the case page.</div> : null}
+      {inv.revision && inv.revised_at ? <div className="small muted" style={{ marginBottom: 10 }}>Last revised {fmtDate(inv.revised_at)} — every revision is listed on the case timeline and in the activity log.</div> : null}
       {inv.status === "void" ? <div className="flash err">This invoice was voided{inv.void_reason ? `: ${inv.void_reason}` : ""}. It is kept for the record.</div> : null}
 
-      {staff && inv.status === "draft" ? (
+      {staff && inv.status !== "void" ? (
+        <>
+        {inv.status === "issued" ? <div className="flash warn">You are editing an issued invoice. It keeps its number {inv.invoice_no}; saving records revision {Number(inv.revision) + 1}. Paid so far: {fmtMoney(paid, inv.currency)}.</div> : null}
         <section className="panel">
           <InvoiceEditor
+            issued={inv.status === "issued"}
+            revision={Number(inv.revision)}
             action={saveInvoice.bind(null, inv.id)}
             header={{ currency: inv.currency, issue_date: inv.issue_date, due_date: inv.due_date, bill_to: inv.bill_to, discount_amount: Number(inv.discount_amount), tax_label: inv.tax_label, tax_rate: Number(inv.tax_rate), notes: inv.notes }}
             lines={lines}
@@ -62,6 +94,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           />
           {!(catalog ?? []).length ? <p className="small muted">The price list is empty — add items under <Link href="/admin/price-list">Price list</Link>, or type the lines directly.</p> : null}
         </section>
+        {inv.status === "issued" ? <div className="case-cols">{paymentsPanel}{voidPanel}</div> : null}
+        </>
       ) : (
         <div className="case-cols">
           <section className="panel">
@@ -102,29 +136,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
                 <dt>Bill to</dt><dd style={{ whiteSpace: "pre-line" }}>{inv.bill_to ?? "—"}</dd>
               </dl>
             </section>
-            <section className="panel">
-              <h2>Payments on this invoice · المدفوعات</h2>
-              {(payments ?? []).length ? (
-                <table className="data"><tbody>{(payments ?? []).map((p) => (
-                  <tr key={p.id} style={p.voided ? { opacity: 0.5 } : undefined}>
-                    <td className="mono">{p.receipt_no}{p.voided ? " (void)" : ""}</td><td>{fmtMoney(p.amount, p.currency)}</td>
-                    <td className="small">{PAYMENT_METHODS[p.method]?.en} · {fmtDay(p.paid_at)}</td>
-                    <td><a className="btn secondary small" href={`/admin/print/case/${id}/receipt?p=${p.id}`} target="_blank" rel="noopener">🖨</a></td>
-                  </tr>
-                ))}</tbody></table>
-              ) : <p className="small muted">No payments yet.{staff && inv.status === "issued" ? " Record one from the case page (Quotation & payments)." : ""}</p>}
-            </section>
-            {staff && inv.status === "issued" ? (
-              <section className="panel">
-                <h2>Void invoice · إلغاء الفاتورة</h2>
-                <p className="small muted">Issued invoices cannot be edited. Void it (it stays on record with a VOID mark) and create a corrected one.</p>
-                <ActionForm action={voidInvoice}>
-                  <input type="hidden" name="id" value={inv.id} />
-                  <div className="field"><label htmlFor="void-reason">Reason *</label><input id="void-reason" type="text" name="reason" maxLength={300} required /></div>
-                  <SubmitButton className="btn danger">Void invoice</SubmitButton>
-                </ActionForm>
-              </section>
-            ) : null}
+            {paymentsPanel}
           </div>
         </div>
       )}

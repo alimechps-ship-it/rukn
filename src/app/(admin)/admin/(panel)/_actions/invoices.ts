@@ -95,11 +95,14 @@ async function saveInvoiceInner(invoiceId: string, _: ActionResult, fd: FormData
   try {
     await assertStaff(can.caseStaff);
     const db = await createSessionClient();
-    const { data: inv } = await db.from("case_invoices").select("id,case_id,status").eq("id", invoiceId).maybeSingle();
+    const { data: inv } = await db.from("case_invoices").select("id,case_id,status,total,invoice_no").eq("id", invoiceId).maybeSingle();
     if (!inv) return { ok: false, message: "Invoice not found." };
-    if (inv.status !== "draft") return { ok: false, message: "This invoice is already issued and locked." };
+    if (inv.status === "void") return { ok: false, message: "A voided invoice cannot be changed." };
+    const revising = inv.status === "issued";
+    const oldTotal = Number(inv.total);
     const lines = parseLines(String(fd.get("lines") ?? "[]"));
     if (typeof lines === "string") return { ok: false, message: lines };
+    if (revising && !lines.length) return { ok: false, message: "An issued invoice needs at least one line. To cancel it, void it instead." };
     const currency = (str(fd, "currency", 3) ?? "").toUpperCase();
     if (!CUR.test(currency)) return { ok: false, message: "Enter a 3-letter currency code (e.g. USD, EUR, EGP)." };
     const issue = str(fd, "issue_date", 10);
@@ -125,6 +128,16 @@ async function saveInvoiceInner(invoiceId: string, _: ActionResult, fd: FormData
       if (ins.error) return { ok: false, message: errMessage(ins.error) };
     }
     revalidatePath(`/admin/cases/${inv.case_id}`);
+    if (revising) {
+      const { data: rev, error: rErr } = await db.rpc("log_invoice_revision", { p_invoice: invoiceId, p_old_total: oldTotal, p_note: str(fd, "revision_note", 300) });
+      if (rErr) return { ok: false, message: `Changes saved, but the revision could not be logged: ${errMessage(rErr)}` };
+      const { data: now } = await db.from("case_invoices").select("total,currency").eq("id", invoiceId).single();
+      return {
+        ok: true,
+        message: `Invoice ${inv.invoice_no} updated — revision ${rev}. Total ${oldTotal.toFixed(2)} → ${Number(now?.total ?? 0).toFixed(2)} ${now?.currency ?? ""}.`,
+        redirectTo: `/admin/cases/${inv.case_id}/invoices/${invoiceId}?revised=${rev}&was=${oldTotal.toFixed(2)}`,
+      };
+    }
     if (fd.get("intent") === "issue") {
       if (!lines.length) return { ok: false, message: "Draft saved. Add at least one line before issuing." };
       const { data: issued, error: iErr } = await db.from("case_invoices").update({ status: "issued" }).eq("id", invoiceId).select("invoice_no,total,currency").single();

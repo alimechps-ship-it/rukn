@@ -18,7 +18,7 @@ const money = (n: number, cur: string) => {
   try { return new Intl.NumberFormat("en-US", { style: "currency", currency: cur || "USD" }).format(n); } catch { return `${n.toFixed(2)} ${cur}`; }
 };
 
-export function InvoiceEditor({ action, header, lines, catalog }: { action: Action; header: Header; lines: InvoiceLine[]; catalog: PriceItem[] }) {
+export function InvoiceEditor({ action, header, lines, catalog, issued = false, revision = 0 }: { action: Action; header: Header; lines: InvoiceLine[]; catalog: PriceItem[]; issued?: boolean; revision?: number }) {
   const [rows, setRows] = useState<Row[]>(() => (lines.length ? lines.map((l) => ({ ...l, key: ++seq })) : [blank()]));
   const [currency, setCurrency] = useState(header.currency);
   const [discount, setDiscount] = useState(String(header.discount_amount ?? 0));
@@ -126,10 +126,24 @@ export function InvoiceEditor({ action, header, lines, catalog }: { action: Acti
         </dl>
       </div>
 
+      {issued ? (
+        <div className="form-grid" style={{ marginTop: 16 }}>
+          <div className="field full"><label htmlFor="inv-revnote">Reason for the change (shown on the case timeline) · سبب التعديل</label><input id="inv-revnote" type="text" name="revision_note" maxLength={300} placeholder="e.g. retainer quantity corrected" /></div>
+        </div>
+      ) : null}
       <div className="btn-row" style={{ marginTop: 16 }}>
-        <SubmitButton name="intent" value="save" className="btn secondary">Save draft · حفظ كمسودة</SubmitButton>
-        <SubmitButton name="intent" value="issue" className="btn teal" pendingText="Issuing…">Issue invoice · إصدار الفاتورة</SubmitButton>
-        <span className="small muted">Issuing gives the invoice its number, locks it and shows it to the agent.</span>
+        {issued ? (
+          <>
+            <SubmitButton name="intent" value="revise" className="btn teal" pendingText="Saving…">Save changes · حفظ التعديلات (rev. {revision + 1})</SubmitButton>
+            <span className="small muted">The invoice keeps its number; the change is recorded as revision {revision + 1} and the agent sees the updated invoice.</span>
+          </>
+        ) : (
+          <>
+            <SubmitButton name="intent" value="save" className="btn secondary">Save draft · حفظ كمسودة</SubmitButton>
+            <SubmitButton name="intent" value="issue" className="btn teal" pendingText="Issuing…">Issue invoice · إصدار الفاتورة</SubmitButton>
+            <span className="small muted">Issuing gives the invoice its number and shows it to the agent. It can still be edited later (as a revision).</span>
+          </>
+        )}
       </div>
     </ActionForm>
   );

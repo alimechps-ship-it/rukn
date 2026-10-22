@@ -540,14 +540,16 @@ do $$ declare v_inv uuid; v_empty uuid; r record; begin
   perform t.ok(r.invoice_no ~ '^INV-[0-9]{2}-[0-9]{5}$' and r.issued_at is not null, 'issuing assigns the invoice number (' || r.invoice_no || ')');
   perform t.ok((select quote_amount = 1276.80 and quote_currency = 'USD' from public.cases where patient_ref = 'P-001'), 'the case price follows the issued invoice');
   perform t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001' and e.body like 'Invoice INV-%issued%'), 'issuing is logged on the case timeline');
+  -- issued invoices can be revised by case staff (number kept, revision logged)
+  update public.case_invoice_items set unit_price = 100 where invoice_id = v_inv and code = 'RET-SET';
+  perform t.ok((select invoice_no = r.invoice_no and total = 1231.20 from public.case_invoices where id = v_inv), 'case staff can edit an issued invoice; number kept, totals recalculated');
+  perform t.ok((select quote_amount = 1231.20 from public.cases where patient_ref = 'P-001'), 'the case price follows the revised invoice');
+  perform t.ok(public.log_invoice_revision(v_inv, 1276.80, 'retainer price corrected') = 1, 'the revision is numbered');
+  perform t.ok((select count(*) = 1 from public.case_events where body like 'Invoice % revised (rev. 1): 1276.80 → 1231.20 USD%'), 'the revision is logged on the case timeline with old and new totals');
   begin
-    update public.case_invoice_items set unit_price = 1 where invoice_id = v_inv;
-    perform t.ok(false, 'issued lines must be locked');
-  exception when insufficient_privilege then perform t.ok(true, 'lines of an issued invoice are locked'); end;
-  begin
-    update public.case_invoices set discount_amount = 500 where id = v_inv;
-    perform t.ok(false, 'issued invoice must be locked');
-  exception when insufficient_privilege then perform t.ok(true, 'an issued invoice cannot be edited'); end;
+    update public.case_invoices set status = 'draft' where id = v_inv;
+    perform t.ok(false, 'issued invoice must not go back to draft');
+  exception when insufficient_privilege then perform t.ok(true, 'an issued invoice cannot go back to draft'); end;
   begin
     delete from public.case_invoices where id = v_inv;
     perform t.ok(false, 'issued invoice must not be deletable');
@@ -562,6 +564,10 @@ do $$ declare v_inv uuid; v_empty uuid; r record; begin
   exception when invalid_parameter_value then perform t.ok(true, 'payments cannot be applied to a draft invoice'); end;
   insert into public.case_payments (case_id, amount, currency, method, invoice_id) select id, 600, 'USD', 'bank_transfer', v_inv from public.cases where patient_ref = 'P-001';
   perform t.ok((select count(*) = 1 from public.case_payments where invoice_id = v_inv), 'a receipt can be applied to an issued invoice');
+  begin
+    update public.case_invoices set currency = 'EUR' where id = v_inv;
+    perform t.ok(false, 'currency change after payment must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'the currency of a paid invoice cannot change'); end;
   delete from public.case_invoices where id = v_empty;
   perform t.ok((select count(*) = 0 from public.case_invoices where id = v_empty), 'a draft invoice can be deleted');
   insert into public.case_invoices (case_id, notes) select id, 'draft for agent visibility test' from public.cases where patient_ref = 'P-001';
@@ -573,6 +579,10 @@ set role authenticated;
 select t.ok((select count(*) = 1 from public.case_invoices), 'agent sees the issued invoice of his case, not drafts');
 select t.ok((select count(*) = 2 from public.case_invoice_items), 'agent sees the lines of the issued invoice');
 select t.ok((select count(*) = 0 from public.case_price_items), 'agent cannot read the internal price list');
+do $$ begin
+  perform public.log_invoice_revision((select id from public.case_invoices limit 1), 0, 'x');
+  perform t.ok(false, 'agent must not log revisions');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot revise invoices'); end $$;
 select t.ok((select count(*) = 1 from public.case_billing_settings), 'agent can read the billing details printed on invoices');
 do $$ begin
   update public.case_billing_settings set bank_details = 'hacked';
@@ -603,6 +613,69 @@ do $$ begin
     perform t.ok(false, 'voided invoice must stay void');
   exception when insufficient_privilege then perform t.ok(true, 'a voided invoice cannot be re-opened'); end;
 end $$;
+reset role;
+
+-- =====================================================================
+-- CASH BOXES
+-- =====================================================================
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) >= 3 from public.cash_accounts), 'case manager sees the cash boxes');
+do $$ declare usd uuid; egp uuid; v_pay uuid; v_no text; v_tr uuid; begin
+  select id into usd from public.cash_accounts where name = 'USD cash box';
+  select id into egp from public.cash_accounts where name = 'Main cash box (EGP)';
+  -- case payment deposited into the USD box
+  insert into public.case_payments (case_id, amount, currency, method, cash_account_id)
+    select id, 50, 'USD', 'cash', usd from public.cases where patient_ref = 'P-001' returning id into v_pay;
+  select entry_no into v_no from public.cash_entries where case_payment_id = v_pay;
+  perform t.ok(v_no ~ '^CR-[0-9]{2}-[0-9]{5}$', 'a case payment deposited in a box creates a receipt voucher (' || v_no || ')');
+  perform t.ok(public.cash_balance(usd) = 50, 'box balance includes the payment');
+  begin
+    insert into public.case_payments (case_id, amount, currency, method, cash_account_id) select id, 5, 'EUR', 'cash', usd from public.cases where patient_ref = 'P-001';
+    perform t.ok(false, 'currency mismatch box/payment');
+  exception when invalid_parameter_value then perform t.ok(true, 'a payment can only go to a box of the same currency'); end;
+  begin
+    insert into public.cash_entries (account_id, direction, amount, currency, category, party_name) values (usd, 'out', 80, 'USD', 'withdrawal', 'Ali');
+    perform t.ok(false, 'overdraft must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'a box cannot pay out more than its balance'); end;
+  insert into public.cash_entries (account_id, direction, amount, currency, category, party_user, description)
+    values (usd, 'out', 30, 'USD', 'advance', '00000000-0000-0000-0000-0000000000c1', 'Courier advance') returning entry_no into v_no;
+  perform t.ok(v_no ~ '^CP-[0-9]{2}-[0-9]{5}$', 'a withdrawal gets a payment voucher number (' || v_no || ')');
+  insert into public.cash_entries (account_id, direction, amount, currency, category, party_user)
+    values (usd, 'in', 10, 'USD', 'advance_return', '00000000-0000-0000-0000-0000000000c1');
+  perform t.ok(public.cash_balance(usd) = 30, 'returned custody goes back into the box');
+  perform t.ok((select sum(case when direction = 'out' then amount else -amount end) = 20 from public.cash_entries
+                where party_user = '00000000-0000-0000-0000-0000000000c1' and not voided), 'person account: taken minus returned');
+  v_tr := public.cash_transfer(usd, egp, 20, 1000, current_date, 'Exchange');
+  perform t.ok(public.cash_balance(usd) = 10 and public.cash_balance(egp) = 1000, 'transfer with exchange moves money between boxes');
+  update public.cash_entries set voided = true, void_reason = 'wrong rate' where transfer_group = v_tr and direction = 'out';
+  perform t.ok((select bool_and(voided) from public.cash_entries where transfer_group = v_tr), 'voiding one side voids the whole transfer');
+  perform t.ok(public.cash_balance(usd) = 30 and public.cash_balance(egp) = 0, 'balances restored after voiding the transfer');
+  begin
+    insert into public.cash_entries (account_id, direction, amount, currency, category) values (usd, 'in', 999, 'USD', 'case_payment');
+    perform t.ok(false, 'direct case_payment voucher must be refused');
+  exception when insufficient_privilege then perform t.ok(true, 'case-payment vouchers can only come from a real case payment'); end;
+  begin
+    update public.cash_accounts set opening_balance = 500 where id = usd;
+    perform t.ok(false, 'opening balance change must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'the opening balance is locked once vouchers exist'); end;
+  update public.case_payments set voided = true, void_reason = 'refund' where id = v_pay;
+  perform t.ok((select voided from public.cash_entries where case_payment_id = v_pay), 'voiding a case payment voids its cash receipt');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cash_accounts) and (select count(*) = 0 from public.cash_entries), 'agents cannot see cash boxes or vouchers');
+do $$ begin
+  insert into public.cash_accounts (name) values ('Agent box');
+  perform t.ok(false, 'agent must not create boxes');
+exception when insufficient_privilege then perform t.ok(true, 'agents cannot create cash boxes'); end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-00000000000c');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cash_entries), 'sales manager cannot see the cash book');
 reset role;
 
 -- Last super administrator protection (deferred trigger → check immediately)

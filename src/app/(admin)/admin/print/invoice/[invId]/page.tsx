@@ -46,6 +46,7 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
         <h1>Invoice<span className="ar">فاتورة</span></h1>
         <div className="doc-no">
           <div className="no">{inv.invoice_no ?? "DRAFT"}</div>
+          {inv.revision ? <div className="date">Revision · <span className="ar">تعديل</span> {inv.revision}</div> : null}
           <div className="date"><bdi>Date · <span className="ar">التاريخ</span></bdi>: <bdi dir="ltr">{fmtDay(inv.issue_date)}</bdi></div>
           {inv.due_date ? <div className="date"><bdi>Due · <span className="ar">الاستحقاق</span></bdi>: <strong><bdi dir="ltr">{fmtDay(inv.due_date)}</bdi></strong></div> : null}
         </div>

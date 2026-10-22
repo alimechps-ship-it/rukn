@@ -195,11 +195,13 @@ export async function addPayment(caseId: string, _: ActionResult, fd: FormData):
     if (!(method in PAYMENT_METHODS)) return { ok: false, message: "Choose the payment method." };
     const paid = str(fd, "paid_at", 10);
     const { data, error } = await db.from("case_payments").insert({
-      case_id: caseId, amount, currency, method, invoice_id, reference: str(fd, "reference", 120), notes: str(fd, "notes", 500),
+      case_id: caseId, amount, currency, method, invoice_id,
+      cash_account_id: UUID.test(String(fd.get("cash_account_id") ?? "")) ? String(fd.get("cash_account_id")) : null,
+      reference: str(fd, "reference", 120), notes: str(fd, "notes", 500),
       paid_at: paid && /^\d{4}-\d{2}-\d{2}$/.test(paid) ? paid : undefined, receipt_no: "pending",
     }).select("receipt_no").single();
     if (error) return { ok: false, message: errMessage(error) };
-    return { ok: true, message: `Payment recorded — receipt ${data.receipt_no}.` };
+    return { ok: true, message: `Payment recorded — receipt ${data.receipt_no}${fd.get("cash_account_id") ? " (deposited in the cash box)" : ""}.` };
   } catch (e) { return fail(e); }
 }
 

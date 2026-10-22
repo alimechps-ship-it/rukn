@@ -101,7 +101,7 @@ with sync_playwright() as p:
     cm.wait_for_url(re.compile(r"issued=1"), timeout=20000)
     h1 = cm.inner_text("h1")
     inv_no = re.search(r"INV-\d{2}-\d{5}", h1)
-    check("Issued invoice gets a number and is locked", inv_no is not None and "Issued" in h1 and cm.locator("#inv-pick").count() == 0, h1)
+    check("Issued invoice gets a number (and stays editable as revisions)", inv_no is not None and "Issued" in h1 and "editing an issued invoice" in cm.inner_text("main"), h1)
     inv_no = inv_no.group(0) if inv_no else "?"
     check("Issued invoice shows the balance due", "$1,630.00" in cm.inner_text("main"))
 

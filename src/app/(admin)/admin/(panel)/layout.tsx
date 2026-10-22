@@ -40,7 +40,17 @@ export default async function PanelLayout({ children }: { children: React.ReactN
         { href: "/admin/cases", label: can.caseStaff(user) ? "All cases" : "My cases", badge: openCases ?? 0 },
         { href: "/admin/cases/new", label: "New case" },
         { href: "/admin/reports", label: "Reports" },
-        ...(can.caseStaff(user) ? [{ href: "/admin/price-list", label: "Price list & billing" }] : []),
+      ],
+    });
+  }
+  if (can.caseStaff(user)) {
+    groups.push({
+      label: "Finance · المالية",
+      items: [
+        { href: "/admin/finance/receivables", label: "Receivables · المستحقات" },
+        { href: "/admin/finance/cash", label: "Cash boxes · الصناديق" },
+        { href: "/admin/finance/people", label: "Person accounts · العهد" },
+        { href: "/admin/price-list", label: "Price list & billing" },
       ],
     });
   }

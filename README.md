@@ -62,6 +62,11 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 - Files live in the **private** `case-files` bucket (50 MB each, STL/PLY/OBJ/3MF/ZIP/PDF/images/DICOM/MP4) and are opened through 2-minute signed links.
 - Printable A4 bilingual documents: case file, records receipt, payment receipt, delivery note, and the case report (also CSV export) under **Reports**.
 - **Invoices per case**: Case → *New invoice* → add items from the **Price list** (aligners, Snap-On, retainers, planning, shipping…), arch, quantity, discount and tax → *Issue* (number `INV-YY-#####`, locked, visible to the agent). Payments can be applied to an invoice; the receipt and the invoice show the balance. Issued invoices are never edited or deleted — they are voided and replaced. Billing details (bank, tax no., terms) are set under **Price list & billing** (migration `20261022000700_case_invoices.sql`).
+- **Finance** (case staff only, migration `20261022000800_finance.sql`):
+  - Issued invoices can be edited; the number is kept and each save is a numbered revision logged on the case timeline and in the audit log. Voided invoices stay locked.
+  - **Receivables**: unpaid issued invoices with ageing (not due / 1–30 / 31–60 / 61–90 / 90+), by agent, cases without an invoice; print + CSV.
+  - **Cash boxes**: cash / bank / wallet boxes, receipt vouchers `CR-`, payment vouchers `CP-`, transfers `TR-` (with exchange), statements with running balance; a box can never pay out more than its balance. A case payment can be deposited into a box in one step. Vouchers print with the amount in words (English + Arabic).
+  - **Person accounts**: what each person took (custody, withdrawals, salaries…) and returned, with printable statements.
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -160,9 +165,10 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (134 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (156 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
+- **Finance** (21 checks: invoice revision, receivables, cash boxes, vouchers, person accounts): see `tests/e2e/finance_flow.py`.
 - **Invoices** (20 checks: price list, draft/issue/void, totals, payments, prints, agent isolation): see `tests/e2e/invoices_flow.py`.
 - **End-to-end acceptance** (27 checks against the running app + a real Supabase stack): see the header of `tests/e2e/acceptance.py`. Run it against a staging project, never production.
 

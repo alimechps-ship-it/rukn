@@ -41,7 +41,7 @@ export default async function PrintReport({ searchParams }: { searchParams: Prom
         </div>
         <div className="box"><h2><span>By service</span><span className="ar">حسب الخدمة</span></h2>
           <table className="t"><tbody>{[...r.byService.entries()].map(([s, n]) => <tr key={s}><td>{s}</td><td className="num">{n}</td></tr>)}</tbody></table>
-          <dl className="kv2" style={{ marginTop: 8 }}><dt>Quoted · المسعّر</dt><dd>{money(r.quoted)}</dd><dt>Received · المحصّل</dt><dd>{money(r.paid)}</dd></dl>
+          <dl className="kv2" style={{ marginTop: 8 }}><dt>Quoted · المسعّر</dt><dd>{money(r.quoted)}</dd><dt>Invoiced · المفوتر</dt><dd>{money(r.invoiced)}</dd><dt>Received · المحصّل</dt><dd>{money(r.paid)}</dd></dl>
         </div>
         {staff ? (
           <div className="box"><h2><span>By agent</span><span className="ar">حسب المندوب</span></h2>

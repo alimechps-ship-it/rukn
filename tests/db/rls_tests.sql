@@ -509,6 +509,102 @@ do $$ begin
 exception when insufficient_privilege then perform t.ok(true, 'anonymous visitors cannot read cases'); end $$;
 reset role;
 
+-- =====================================================================
+-- CASE INVOICES
+-- =====================================================================
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) >= 12 from public.case_price_items), 'case manager reads the price list');
+do $$ declare v_inv uuid; v_empty uuid; r record; begin
+  insert into public.case_invoices (case_id, currency, status, invoice_no, total)
+    select id, 'USD', 'issued', 'FAKE-1', 999 from public.cases where patient_ref = 'P-001' returning id into v_inv;
+  select * into r from public.case_invoices where id = v_inv;
+  perform t.ok(r.status = 'draft' and r.invoice_no is null and r.total = 0, 'a new invoice is always a draft without number or totals');
+  insert into public.case_invoice_items (invoice_id, sort_order, code, description, qty, unit_price) values
+    (v_inv, 1, 'ALN-FULL', 'Clear aligners — comprehensive treatment', 1, 900),
+    (v_inv, 2, 'RET-SET', 'Clear retainer set', 1, 120);
+  update public.case_invoices set discount_amount = 20, tax_rate = 14 where id = v_inv;
+  select * into r from public.case_invoices where id = v_inv;
+  perform t.ok(r.subtotal = 1020 and r.tax_amount = 140 and r.total = 1140, 'invoice totals: subtotal − discount + tax (' || r.total || ')');
+  update public.case_invoice_items set qty = 2 where invoice_id = v_inv and code = 'RET-SET';
+  perform t.ok((select subtotal = 1140 and total = 1276.80 from public.case_invoices where id = v_inv), 'totals follow line changes on a draft');
+  -- issuing an empty draft is refused
+  insert into public.case_invoices (case_id) select id from public.cases where patient_ref = 'P-001' returning id into v_empty;
+  begin
+    update public.case_invoices set status = 'issued' where id = v_empty;
+    perform t.ok(false, 'empty invoice must not be issued');
+  exception when invalid_parameter_value then perform t.ok(true, 'an invoice without lines cannot be issued'); end;
+  -- issue
+  update public.case_invoices set status = 'issued' where id = v_inv;
+  select * into r from public.case_invoices where id = v_inv;
+  perform t.ok(r.invoice_no ~ '^INV-[0-9]{2}-[0-9]{5}$' and r.issued_at is not null, 'issuing assigns the invoice number (' || r.invoice_no || ')');
+  perform t.ok((select quote_amount = 1276.80 and quote_currency = 'USD' from public.cases where patient_ref = 'P-001'), 'the case price follows the issued invoice');
+  perform t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001' and e.body like 'Invoice INV-%issued%'), 'issuing is logged on the case timeline');
+  begin
+    update public.case_invoice_items set unit_price = 1 where invoice_id = v_inv;
+    perform t.ok(false, 'issued lines must be locked');
+  exception when insufficient_privilege then perform t.ok(true, 'lines of an issued invoice are locked'); end;
+  begin
+    update public.case_invoices set discount_amount = 500 where id = v_inv;
+    perform t.ok(false, 'issued invoice must be locked');
+  exception when insufficient_privilege then perform t.ok(true, 'an issued invoice cannot be edited'); end;
+  begin
+    delete from public.case_invoices where id = v_inv;
+    perform t.ok(false, 'issued invoice must not be deletable');
+  exception when insufficient_privilege then perform t.ok(true, 'an issued invoice cannot be deleted'); end;
+  begin
+    insert into public.case_payments (case_id, amount, currency, method, invoice_id) select id, 100, 'EUR', 'cash', v_inv from public.cases where patient_ref = 'P-001';
+    perform t.ok(false, 'currency mismatch must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'a payment must use the invoice currency'); end;
+  begin
+    insert into public.case_payments (case_id, amount, currency, method, invoice_id) select id, 100, 'USD', 'cash', v_empty from public.cases where patient_ref = 'P-001';
+    perform t.ok(false, 'payment on a draft must be refused');
+  exception when invalid_parameter_value then perform t.ok(true, 'payments cannot be applied to a draft invoice'); end;
+  insert into public.case_payments (case_id, amount, currency, method, invoice_id) select id, 600, 'USD', 'bank_transfer', v_inv from public.cases where patient_ref = 'P-001';
+  perform t.ok((select count(*) = 1 from public.case_payments where invoice_id = v_inv), 'a receipt can be applied to an issued invoice');
+  delete from public.case_invoices where id = v_empty;
+  perform t.ok((select count(*) = 0 from public.case_invoices where id = v_empty), 'a draft invoice can be deleted');
+  insert into public.case_invoices (case_id, notes) select id, 'draft for agent visibility test' from public.cases where patient_ref = 'P-001';
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_invoices), 'agent sees the issued invoice of his case, not drafts');
+select t.ok((select count(*) = 2 from public.case_invoice_items), 'agent sees the lines of the issued invoice');
+select t.ok((select count(*) = 0 from public.case_price_items), 'agent cannot read the internal price list');
+select t.ok((select count(*) = 1 from public.case_billing_settings), 'agent can read the billing details printed on invoices');
+do $$ begin
+  update public.case_billing_settings set bank_details = 'hacked';
+  perform t.ok((select coalesce(bank_details, '') <> 'hacked' from public.case_billing_settings), 'agent cannot change billing details');
+end $$;
+do $$ begin
+  insert into public.case_invoices (case_id) select id from public.cases where patient_ref = 'P-001';
+  perform t.ok(false, 'agent must not create invoices');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot create invoices'); end $$;
+do $$ begin
+  update public.case_invoices set discount_amount = 999;
+  perform t.ok((select discount_amount = 20 from public.case_invoices), 'agent cannot change an invoice');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_invoices) and (select count(*) = 0 from public.case_invoice_items), 'agent 2 cannot see agent 1 invoices');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ begin
+  update public.case_invoices set status = 'void', void_reason = 'Wrong retainer quantity' where status = 'issued';
+  perform t.ok((select status = 'void' and invoice_no is not null from public.case_invoices where void_reason is not null), 'an issued invoice can be voided and keeps its number');
+  begin
+    update public.case_invoices set status = 'issued' where status = 'void';
+    perform t.ok(false, 'voided invoice must stay void');
+  exception when insufficient_privilege then perform t.ok(true, 'a voided invoice cannot be re-opened'); end;
+end $$;
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

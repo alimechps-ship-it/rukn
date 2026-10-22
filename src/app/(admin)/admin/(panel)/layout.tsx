@@ -40,6 +40,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
         { href: "/admin/cases", label: can.caseStaff(user) ? "All cases" : "My cases", badge: openCases ?? 0 },
         { href: "/admin/cases/new", label: "New case" },
         { href: "/admin/reports", label: "Reports" },
+        ...(can.caseStaff(user) ? [{ href: "/admin/price-list", label: "Price list & billing" }] : []),
       ],
     });
   }

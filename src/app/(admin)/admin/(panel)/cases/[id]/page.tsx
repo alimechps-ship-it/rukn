@@ -14,6 +14,8 @@ import {
 import {
   addCaseComment, addPayment, changeCaseStatus, decidePlan, deleteCaseFile, markDelivered, registerIntake, saveQuote, saveShipment, updateCaseInfo, voidPayment,
 } from "../../_actions/cases";
+import { createInvoice } from "../../_actions/invoices";
+import { INVOICE_STATUS } from "@/lib/invoices";
 import { CaseFormFields } from "../CaseForm";
 
 export const metadata = { title: "Case" };
@@ -29,10 +31,11 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const db = await createSessionClient();
   const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: files }, { data: events }, { data: payments }, services, agents, staffUsers] = await Promise.all([
+  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, services, agents, staffUsers] = await Promise.all([
     db.from("case_files").select("*").eq("case_id", id).order("created_at"),
     db.from("case_events").select("*").eq("case_id", id).order("created_at"),
     db.from("case_payments").select("*").eq("case_id", id).order("created_at"),
+    db.from("case_invoices").select("id,invoice_no,status,issue_date,currency,total").eq("case_id", id).order("created_at"),
     serviceOptions(db),
     staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([]),
     staff ? peopleWithRole(db, ["case_manager", "super_admin"]) : Promise.resolve([]),
@@ -44,6 +47,9 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const editable = staff || status === "submitted";
   const paid = (payments ?? []).filter((p) => !p.voided).reduce<Record<string, number>>((acc, p) => ({ ...acc, [p.currency]: (acc[p.currency] ?? 0) + Number(p.amount) }), {});
   const intakeItems = (c.intake_items ?? []) as { title: string; text: string }[];
+  const issuedInvoices = (invoices ?? []).filter((i) => i.status === "issued");
+  const paidOn = (invId: string) => (payments ?? []).filter((p) => !p.voided && p.invoice_id === invId).reduce((a, p) => a + Number(p.amount), 0);
+  const invNo = new Map((invoices ?? []).map((i) => [i.id, i.invoice_no as string | null]));
 
   return (
     <>
@@ -215,6 +221,38 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
           </section>
 
           <section className="panel">
+            <div className="panel-head">
+              <h2>Invoices · الفواتير</h2>
+              {staff ? (
+                <ActionForm action={createInvoice.bind(null, c.id)}>
+                  <SubmitButton className="btn teal small" pendingText="Creating…">+ New invoice</SubmitButton>
+                </ActionForm>
+              ) : null}
+            </div>
+            {(invoices ?? []).length ? (
+              <table className="data">
+                <thead><tr><th>Invoice</th><th className="num">Total</th><th className="num">Balance</th><th /></tr></thead>
+                <tbody>
+                  {(invoices ?? []).map((inv) => (
+                    <tr key={inv.id} style={inv.status === "void" ? { opacity: 0.55 } : undefined}>
+                      <td>
+                        <Link className="mono" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{inv.invoice_no ?? "Draft"}</Link>
+                        <div><span className={`pill ${INVOICE_STATUS[inv.status].tone}`}>{INVOICE_STATUS[inv.status].en} · {INVOICE_STATUS[inv.status].ar}</span> <span className="small muted">{fmtDay(inv.issue_date)}</span></div>
+                      </td>
+                      <td className="num">{fmtMoney(inv.total, inv.currency)}</td>
+                      <td className="num">{inv.status === "issued" ? <strong>{fmtMoney(Number(inv.total) - paidOn(inv.id), inv.currency)}</strong> : "—"}</td>
+                      <td className="actions nowrap">
+                        <Link className="btn secondary small" href={`/admin/cases/${c.id}/invoices/${inv.id}`}>{staff && inv.status === "draft" ? "Edit" : "Open"}</Link>{" "}
+                        <a className="btn secondary small" href={`/admin/print/invoice/${inv.id}`} target="_blank" rel="noopener">🖨</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : <p className="small muted">{staff ? "No invoice yet. Press “New invoice” and add aligners, Snap-On, retainers… from the price list." : "No invoice issued yet."}</p>}
+          </section>
+
+          <section className="panel">
             <h2>Quotation & payments · السعر والمدفوعات</h2>
             <dl className="kv">
               <dt>Quoted price</dt><dd><strong>{fmtMoney(c.quote_amount, c.quote_currency)}</strong></dd>
@@ -227,7 +265,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                 <tbody>
                   {(payments ?? []).map((p) => (
                     <tr key={p.id} style={p.voided ? { opacity: 0.55 } : undefined}>
-                      <td className="mono">{p.receipt_no}{p.voided ? <div><span className="pill closed">void</span></div> : null}</td>
+                      <td className="mono">{p.receipt_no}{p.invoice_id ? <div className="small muted">→ {invNo.get(p.invoice_id) ?? "invoice"}</div> : null}{p.voided ? <div><span className="pill closed">void</span></div> : null}</td>
                       <td>{fmtMoney(p.amount, p.currency)}<div className="small muted">{PAYMENT_METHODS[p.method]?.en}</div></td>
                       <td className="small">{fmtDay(p.paid_at)}</td>
                       <td className="actions">
@@ -252,6 +290,10 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                 <details style={{ marginTop: 10 }}>
                   <summary className="small"><strong>Record a payment (issues a receipt)</strong></summary>
                   <ActionForm action={addPayment.bind(null, c.id)} className="form-grid" resetOnSuccess>
+                    {issuedInvoices.length ? (
+                      <Select name="invoice_id" label="Apply to invoice" full defaultValue={issuedInvoices.find((i) => Number(i.total) - paidOn(i.id) > 0)?.id ?? ""}
+                        options={[{ value: "", label: "— not linked to an invoice —" }, ...issuedInvoices.map((i) => ({ value: i.id, label: `${i.invoice_no} · balance ${fmtMoney(Number(i.total) - paidOn(i.id), i.currency)}` }))]} />
+                    ) : null}
                     <Text name="amount" label="Amount *" type="number" />
                     <Text name="currency" label="Currency *" defaultValue={c.quote_currency ?? "USD"} maxLength={3} />
                     <Select name="method" label="Method" defaultValue="bank_transfer" options={Object.entries(PAYMENT_METHODS).map(([k, m]) => ({ value: k, label: m.en }))} />

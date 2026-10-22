@@ -61,6 +61,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 - Workflow: Submitted → Records received → Digital diagnosis → Treatment planning → Awaiting doctor approval → Plan approved → In production → Quality check → Shipped → Delivered (plus Revision, On hold, Cancelled). Every change is written to the case timeline; internal notes are never visible to agents.
 - Files live in the **private** `case-files` bucket (50 MB each, STL/PLY/OBJ/3MF/ZIP/PDF/images/DICOM/MP4) and are opened through 2-minute signed links.
 - Printable A4 bilingual documents: case file, records receipt, payment receipt, delivery note, and the case report (also CSV export) under **Reports**.
+- **Invoices per case**: Case → *New invoice* → add items from the **Price list** (aligners, Snap-On, retainers, planning, shipping…), arch, quantity, discount and tax → *Issue* (number `INV-YY-#####`, locked, visible to the agent). Payments can be applied to an invoice; the receipt and the invoice show the balance. Issued invoices are never edited or deleted — they are voided and replaced. Billing details (bank, tax no., terms) are set under **Price list & billing** (migration `20261022000700_case_invoices.sql`).
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -159,9 +160,10 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (109 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (134 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
+- **Invoices** (20 checks: price list, draft/issue/void, totals, payments, prints, agent isolation): see `tests/e2e/invoices_flow.py`.
 - **End-to-end acceptance** (27 checks against the running app + a real Supabase stack): see the header of `tests/e2e/acceptance.py`. Run it against a staging project, never production.
 
 ## 10. Clinical data — important

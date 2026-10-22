@@ -181,14 +181,21 @@ export async function addPayment(caseId: string, _: ActionResult, fd: FormData):
     await assertStaff(can.caseStaff);
     const db = await createSessionClient();
     const amount = Number(str(fd, "amount", 20));
-    const currency = (str(fd, "currency", 3) ?? "").toUpperCase();
+    let currency = (str(fd, "currency", 3) ?? "").toUpperCase();
+    const invoiceId = String(fd.get("invoice_id") ?? "");
+    let invoice_id: string | null = null;
+    if (UUID.test(invoiceId)) {
+      const { data: inv } = await db.from("case_invoices").select("id,currency,status").eq("id", invoiceId).eq("case_id", caseId).maybeSingle();
+      if (!inv || inv.status !== "issued") return { ok: false, message: "Choose an issued invoice of this case." };
+      invoice_id = inv.id; currency = inv.currency; // the receipt always uses the invoice currency
+    }
     const method = String(fd.get("method"));
     if (!Number.isFinite(amount) || amount <= 0) return { ok: false, message: "Enter the amount received." };
     if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, message: "Enter a 3-letter currency code." };
     if (!(method in PAYMENT_METHODS)) return { ok: false, message: "Choose the payment method." };
     const paid = str(fd, "paid_at", 10);
     const { data, error } = await db.from("case_payments").insert({
-      case_id: caseId, amount, currency, method, reference: str(fd, "reference", 120), notes: str(fd, "notes", 500),
+      case_id: caseId, amount, currency, method, invoice_id, reference: str(fd, "reference", 120), notes: str(fd, "notes", 500),
       paid_at: paid && /^\d{4}-\d{2}-\d{2}$/.test(paid) ? paid : undefined, receipt_no: "pending",
     }).select("receipt_no").single();
     if (error) return { ok: false, message: errMessage(error) };

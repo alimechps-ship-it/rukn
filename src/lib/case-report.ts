@@ -25,7 +25,14 @@ export async function loadReport(db: Db, f: ReportFilters, staff: boolean) {
   const { data, error } = await q;
   const rows = (data ?? []) as unknown as ReportRow[];
   const ids = rows.map((r) => r.id);
-  const { data: pays } = ids.length ? await db.from("case_payments").select("case_id,amount,currency,voided").in("case_id", ids) : { data: [] };
+  const [{ data: pays }, { data: invs }] = ids.length
+    ? await Promise.all([
+        db.from("case_payments").select("case_id,amount,currency,voided").in("case_id", ids),
+        db.from("case_invoices").select("case_id,total,currency").eq("status", "issued").in("case_id", ids),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const invoiced = new Map<string, number>();
+  for (const i of (invs ?? []) as { total: number; currency: string }[]) invoiced.set(i.currency, (invoiced.get(i.currency) ?? 0) + Number(i.total));
 
   const byStatus = new Map<string, number>();
   const byAgent = new Map<string, number>();
@@ -47,6 +54,6 @@ export async function loadReport(db: Db, f: ReportFilters, staff: boolean) {
   return {
     error: error?.message ?? null, rows, open, delivered: byStatus.get("delivered") ?? 0,
     avgDays: turnaround.length ? turnaround.reduce((a, b) => a + b, 0) / turnaround.length : null,
-    byStatus, byAgent, byService, byCountry, quoted, paid,
+    byStatus, byAgent, byService, byCountry, quoted, paid, invoiced,
   };
 }

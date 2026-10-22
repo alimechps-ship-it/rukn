@@ -43,6 +43,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
         <div className="stat"><div className="k">Delivered</div><div className="v">{r.delivered}</div></div>
         <div className="stat"><div className="k">Avg. days to delivery</div><div className="v">{r.avgDays === null ? "—" : r.avgDays.toFixed(1)}</div></div>
         <div className="stat"><div className="k">Quoted</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.quoted)}</div></div>
+        <div className="stat"><div className="k">Invoiced</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.invoiced)}</div></div>
         <div className="stat"><div className="k">Received</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.paid)}</div></div>
       </div>
       <div className="cols">

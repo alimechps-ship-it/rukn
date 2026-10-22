@@ -39,10 +39,11 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
   const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
   const company = await loadCompany(db);
-  const [{ data: files }, { data: events }, { data: payments }] = await Promise.all([
+  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }] = await Promise.all([
     db.from("case_files").select("filename,category,is_deliverable,created_at").eq("case_id", id).order("created_at"),
     db.from("case_events").select("kind,from_status,to_status,body,author_id,created_at").eq("case_id", id).neq("kind", "internal").order("created_at"),
     db.from("case_payments").select("*").eq("case_id", id).order("created_at"),
+    db.from("case_invoices").select("invoice_no,status,total,currency").eq("case_id", id).neq("status", "draft").order("created_at"),
   ]);
   const people = await profileMap(db, [c.agent_id, c.assigned_to, c.intake_received_by, ...(payments ?? []).map((x) => x.received_by), ...(events ?? []).map((e) => e.author_id)]);
   const agent = people.get(c.agent_id);
@@ -78,6 +79,10 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
   if (doc === "receipt") {
     const pay = (payments ?? []).find((x) => x.id === p);
     if (!pay) notFound();
+    const { data: inv } = pay.invoice_id
+      ? await db.from("case_invoices").select("invoice_no,total,currency").eq("id", pay.invoice_id).maybeSingle()
+      : { data: null };
+    const paidOnInv = inv ? (payments ?? []).filter((x) => !x.voided && x.invoice_id === pay.invoice_id).reduce((a, x) => a + Number(x.amount), 0) : 0;
     return (
       <PrintShell back={back} company={company} docRef={pay.receipt_no}>
         {pay.voided ? <div className="void">VOID</div> : null}
@@ -89,18 +94,27 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
             <dt>Received from · استلمنا من</dt><dd>{agent?.name ?? "—"}{agent?.organization ? ` — ${agent.organization}` : ""} / {c.clinic_name}</dd>
             <dt>Payment method · طريقة الدفع</dt><dd>{PAYMENT_METHODS[pay.method]?.en} · <span className="ar">{PAYMENT_METHODS[pay.method]?.ar}</span></dd>
             <dt>Reference · المرجع</dt><dd>{pay.reference ?? "—"}</dd>
-            <dt>For · وذلك عن</dt><dd>{c.service_label ?? "Dental services"} — case {c.code}</dd>
+            <dt>For · وذلك عن</dt><dd>{inv ? `Invoice ${inv.invoice_no} · ` : ""}{c.service_label ?? "Dental services"} — case {c.code}</dd>
             {pay.notes ? <><dt>Notes · ملاحظات</dt><dd>{pay.notes}</dd></> : null}
             {pay.voided ? <><dt>Voided · ملغى</dt><dd>{pay.void_reason}</dd></> : null}
           </dl>
         </div>
         <div className="grid2">{CaseBox}<div className="box">
           <H en="Account" ar="الحساب" />
+          {inv ? (
+          <dl className="kv2">
+            <dt>Invoice</dt><dd>{inv.invoice_no}</dd>
+            <dt>Invoice total</dt><dd>{fmtMoney(inv.total, inv.currency)}</dd>
+            <dt>Paid on invoice</dt><dd>{fmtMoney(paidOnInv, inv.currency)}</dd>
+            <dt>Balance</dt><dd>{fmtMoney(Number(inv.total) - paidOnInv, inv.currency)}</dd>
+          </dl>
+          ) : (
           <dl className="kv2">
             <dt>Quoted price</dt><dd>{fmtMoney(c.quote_amount, c.quote_currency)}</dd>
             <dt>Total paid</dt><dd>{fmtMoney((payments ?? []).filter((x) => !x.voided && x.currency === pay.currency).reduce((a, x) => a + Number(x.amount), 0), pay.currency)}</dd>
             {c.quote_amount && c.quote_currency === pay.currency ? <><dt>Balance</dt><dd>{fmtMoney(Number(c.quote_amount) - (payments ?? []).filter((x) => !x.voided && x.currency === pay.currency).reduce((a, x) => a + Number(x.amount), 0), pay.currency)}</dd></> : null}
           </dl>
+          )}
         </div></div>
         <div className="sign two">
           <div>Received by (RUKN) · المستلم<br /><strong style={{ color: "#1d2939" }}>{people.get(pay.received_by)?.name ?? ""}</strong></div>
@@ -224,6 +238,7 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
           <dl className="kv2">
             <dt>Quoted</dt><dd>{fmtMoney(c.quote_amount, c.quote_currency)}</dd>
             <dt>Paid</dt><dd>{Object.keys(paidTotal).length ? Object.entries(paidTotal).map(([k, v]) => fmtMoney(v, k)).join(" + ") : "—"}</dd>
+            <dt>Invoices</dt><dd>{(invoices ?? []).map((x) => `${x.invoice_no} (${fmtMoney(x.total, x.currency)}${x.status === "void" ? ", void" : ""})`).join(", ") || "—"}</dd>
             <dt>Receipts</dt><dd>{(payments ?? []).map((x) => x.receipt_no + (x.voided ? " (void)" : "")).join(", ") || "—"}</dd>
           </dl>
         </div>

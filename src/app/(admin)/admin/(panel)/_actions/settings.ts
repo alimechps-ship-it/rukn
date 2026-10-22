@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { randomInt } from "node:crypto";
 import { assertStaff, can } from "@/lib/auth";
 import { allLanguages, bool, createSessionClient, errMessage, int, revalidateSite, str } from "@/lib/admin";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -179,6 +180,76 @@ export async function inviteUser(_: ActionResult, fd: FormData): Promise<ActionR
     const { error: rErr } = await db.from("user_roles").insert(roles.map((role) => ({ user_id: data.user!.id, role, created_by: admin.id })));
     if (rErr) return { ok: false, message: `User invited, but roles could not be saved: ${errMessage(rErr)}` };
     return { ok: true, message: `Invitation e-mail sent to ${email}.` };
+  } catch (e) { return fail(e); }
+}
+
+/** Readable random password: no look-alike characters, always letters + digits + symbol. */
+function generatePassword() {
+  const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnpqrstuvwxyz", "23456789", "!@#$%*?"];
+  const all = sets.join("");
+  const chars = sets.map((set) => set[randomInt(set.length)]);
+  while (chars.length < 12) chars.push(all[randomInt(all.length)]);
+  for (let i = chars.length - 1; i > 0; i--) { const j = randomInt(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+  return chars.join("");
+}
+function checkPassword(pw: string) {
+  if (pw.length < 10) return "The password must have at least 10 characters.";
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return "The password must contain letters and numbers.";
+  return null;
+}
+
+/**
+ * Add a user from the dashboard. Mode "create" makes the account immediately with a
+ * password (no e-mail needed — the admin hands the login details to the person);
+ * mode "invite" sends the Supabase invitation e-mail.
+ */
+export async function addUser(prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  if (fd.get("mode") === "invite") return inviteUser(prev, fd);
+  try {
+    const admin = await assertStaff(can.admin);
+    const svc = createServiceClient();
+    if (!svc) return { ok: false, message: "Creating accounts needs SUPABASE_SERVICE_ROLE_KEY in the Vercel environment variables (then redeploy)." };
+    const email = (str(fd, "email", 200) ?? "").toLowerCase();
+    if (!EMAIL.test(email)) return { ok: false, message: "Enter a valid e-mail address." };
+    const roles = parseRoles(fd);
+    if (!roles.length) return { ok: false, message: "Select at least one role." };
+    const typed = String(fd.get("password") ?? "").trim();
+    const password = typed || generatePassword();
+    const bad = typed ? checkPassword(typed) : null;
+    if (bad) return { ok: false, message: bad };
+    const fullName = str(fd, "full_name", 120);
+    const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName ?? "" } });
+    if (error || !data.user) {
+      const msg = error?.message ?? "unknown error";
+      return { ok: false, message: /already|registered|exists/i.test(msg) ? `An account with ${email} already exists.` : `Could not create the account: ${msg}` };
+    }
+    const db = await createSessionClient();
+    await db.from("profiles").update({ full_name: fullName, allowed_locales: await parseLocales(fd), ...contactFields(fd) }).eq("id", data.user.id);
+    const { error: rErr } = await db.from("user_roles").insert(roles.map((role) => ({ user_id: data.user!.id, role, created_by: admin.id })));
+    if (rErr) {
+      await svc.auth.admin.deleteUser(data.user.id);
+      return { ok: false, message: `Roles could not be saved, so the account was not created: ${errMessage(rErr)}` };
+    }
+    return {
+      ok: true,
+      message: `Account created ✓  Send these login details to the person —  Sign-in: ${await origin()}/admin/login  ·  E-mail: ${email}  ·  Password: ${password}   (shown only now; they can change it under "Account").`,
+    };
+  } catch (e) { return fail(e); }
+}
+
+/** Admin sets a new password for a user (no e-mail needed). */
+export async function setUserPassword(userId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.admin);
+    const svc = createServiceClient();
+    if (!svc) return { ok: false, message: "Setting passwords needs SUPABASE_SERVICE_ROLE_KEY on the server." };
+    const typed = String(fd.get("password") ?? "").trim();
+    const bad = typed ? checkPassword(typed) : null;
+    if (bad) return { ok: false, message: bad };
+    const password = typed || generatePassword();
+    const { data, error } = await svc.auth.admin.updateUserById(userId, { password, email_confirm: true });
+    if (error) return { ok: false, message: `Could not set the password: ${error.message}` };
+    return { ok: true, message: `New password set ✓  E-mail: ${data.user?.email ?? ""}  ·  Password: ${password}   (shown only now).` };
   } catch (e) { return fail(e); }
 }
 

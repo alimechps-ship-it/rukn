@@ -4,7 +4,8 @@ import { Check, Text } from "@/components/admin/fields";
 import { can, requireStaff, ROLE_LABELS } from "@/lib/auth";
 import { allLanguages, createSessionClient, fmtDate } from "@/lib/admin";
 import type { AppRole } from "@/lib/types";
-import { inviteUser, removeUser, sendPasswordReset, updateUserAccess } from "../_actions/settings";
+import { addUser, removeUser, sendPasswordReset, setUserPassword, updateUserAccess } from "../_actions/settings";
+import { COUNTRIES } from "@/lib/cases";
 
 export const metadata = { title: "Users & roles" };
 const ROLES = Object.keys(ROLE_LABELS) as AppRole[];
@@ -28,22 +29,31 @@ export default async function Users() {
   const serviceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
   return (
     <>
-      <div className="topbar"><div><h1>Users & roles</h1><div className="sub">There is no public registration. People join only by invitation.</div></div></div>
+      <div className="topbar"><div><h1>Users & roles</h1><div className="sub">There is no public registration. Only a Super Administrator can add people.</div></div></div>
       {error ? <div className="flash err">{error.message}</div> : null}
-      {!serviceKey ? <div className="flash warn">SUPABASE_SERVICE_ROLE_KEY is not set on the server, so invitations and account removal are unavailable here. You can invite users from the Supabase dashboard and assign roles below.</div> : null}
-      <section className="panel">
-        <h2>Invite a team member</h2>
-        <ActionForm action={inviteUser} className="form-grid" resetOnSuccess>
-          <Text name="email" label="E-mail" type="email" required />
-          <Text name="full_name" label="Full name" />
-          <Text name="organization" label="Company / organization (agents)" />
-          <Text name="country" label="Country (agents)" />
-          <Text name="region" label="Region / territory (agents)" />
+      {!serviceKey ? <div className="flash warn">SUPABASE_SERVICE_ROLE_KEY is not set on the server, so creating accounts, setting passwords and removing accounts are unavailable. Add it in Vercel → Settings → Environment Variables, then redeploy.</div> : null}
+      <section className="panel highlight" id="add">
+        <h2>Add a user · إضافة مستخدم</h2>
+        <p className="small muted" style={{ marginTop: -6 }}>
+          For an agent: fill the details, tick <strong>Agent</strong>, and press <strong>Create account</strong>. Leave the password empty to generate a strong one —
+          it is shown once so you can send it to the agent (e.g. by WhatsApp). No e-mail or Supabase step is needed.
+        </p>
+        <ActionForm action={addUser} className="form-grid" resetOnSuccess>
+          <Text name="email" label="E-mail (used to sign in)" type="email" required />
+          <Text name="full_name" label="Full name" required />
+          <Text name="password" label="Password (optional — empty = generate)" type="text" />
           <Text name="phone" label="Phone / WhatsApp" type="tel" />
-          <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} /> {ROLE_LABELS[r]}</label>)}</div></div>
+          <Text name="organization" label="Company / organization (agents)" />
+          <div className="field"><label htmlFor="new-country">Country (agents)</label><input id="new-country" name="country" type="text" list="country-list" autoComplete="off" maxLength={80} /></div>
+          <Text name="region" label="Region / territory (agents)" />
+          <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} defaultChecked={r === "agent"} /> {ROLE_LABELS[r]}</label>)}</div></div>
           <div className="field full"><label>Translator languages</label><div className="btn-row">{langs.map((l) => <label key={l.code} className="check"><input type="checkbox" name={`locale_${l.code}`} /> {l.native_name}</label>)}</div></div>
-          <div className="full"><SubmitButton disabled={!serviceKey}>Send invitation</SubmitButton></div>
+          <div className="full btn-row">
+            <SubmitButton name="mode" value="create" disabled={!serviceKey} pendingText="Creating…">Create account</SubmitButton>
+            <SubmitButton name="mode" value="invite" className="btn secondary" disabled={!serviceKey} pendingText="Sending…">Send e-mail invitation instead</SubmitButton>
+          </div>
         </ActionForm>
+        <datalist id="country-list">{COUNTRIES.map(([code, name]) => <option key={code} value={name} />)}</datalist>
       </section>
       {(profiles ?? []).map((p) => {
         const mine = (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role as AppRole);
@@ -52,6 +62,13 @@ export default async function Users() {
             <div className="panel-head">
               <div><h2 style={{ margin: 0 }}>{p.full_name || p.email}</h2><div className="small muted">{p.email} · joined {fmtDate(p.created_at)} {p.id === me.id ? "· this is you" : ""}</div></div>
               <div className="btn-row">
+                <details className="inline-details">
+                  <summary className="btn secondary small">Set password</summary>
+                  <ActionForm action={setUserPassword.bind(null, p.id)} className="inline-form">
+                    <input name="password" type="text" placeholder="empty = generate" aria-label="New password" autoComplete="off" />
+                    <SubmitButton className="btn small" disabled={!serviceKey}>Set</SubmitButton>
+                  </ActionForm>
+                </details>
                 <ConfirmAction action={sendPasswordReset} hidden={{ email: p.email }} label="Send password reset" title="Send password reset?" message={`A reset link will be e-mailed to ${p.email}.`} confirmLabel="Send" />
                 {p.id !== me.id ? <ConfirmAction action={removeUser} hidden={{ id: p.id }} danger label="Remove account" title="Remove this account?" message="The person loses access immediately and their login is deleted. Their past notes remain but show as a former staff member." confirmLabel="Remove" /> : null}
               </div>

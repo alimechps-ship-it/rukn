@@ -159,3 +159,11 @@ dialog.confirm { max-width: 440px; }
 .timeline li.internal { background: #fffaeb; padding-inline: 10px; border-radius: 8px; }
 details > summary { cursor: pointer; }
 .report-table td.num, .report-table th.num { text-align: end; font-variant-numeric: tabular-nums; }
+.inline-details { position: relative; }
+.inline-details > summary { list-style: none; }
+.inline-details > summary::-webkit-details-marker { display: none; }
+.inline-details[open] > .inline-form { position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 5; display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; width: 340px; padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,33,57,.12); }
+.inline-form .flash { flex-basis: 100%; margin: 0; word-break: break-all; }
+.inline-form input { flex: 1; min-width: 0; }
+.flash.ok { user-select: text; }
+.form-grid > .flash { grid-column: 1 / -1; }

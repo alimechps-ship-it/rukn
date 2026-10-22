@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { assertStaff, can } from "@/lib/auth";
 import { createSessionClient, errMessage, str } from "@/lib/admin";
-import { countryName } from "@/lib/cases";
+import { countryName, withQuote } from "@/lib/cases";
 import { addDays, LINE_ARCHES, PRICE_CATEGORIES, round2, type InvoiceLine } from "@/lib/invoices";
 import type { ActionResult } from "@/components/admin/ActionForm";
 
@@ -24,11 +24,11 @@ const num = (v: FormDataEntryValue | null, fallback = 0) => {
 /** Creates a draft invoice pre-filled from the case and the billing defaults, then opens the editor. */
 export async function createInvoice(caseId: string, _: ActionResult, _fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     if (!UUID.test(caseId)) return { ok: false, message: "Unknown case." };
     const db = await createSessionClient();
     const [{ data: c }, { data: billing }] = await Promise.all([
-      db.from("cases").select("id,agent_id,clinic_name,doctor_name,city,country_code,doctor_phone,doctor_email,quote_currency").eq("id", caseId).maybeSingle(),
+      db.from("cases").select("id,agent_id,clinic_name,doctor_name,city,country_code,doctor_phone,doctor_email,case_finance(quote_currency)").eq("id", caseId).maybeSingle(),
       db.from("case_billing_settings").select("*").eq("id", 1).maybeSingle(),
     ]);
     if (!c) return { ok: false, message: "Unknown case." };
@@ -42,7 +42,7 @@ export async function createInvoice(caseId: string, _: ActionResult, _fd: FormDa
     const today = new Date().toISOString().slice(0, 10);
     const { data, error } = await db.from("case_invoices").insert({
       case_id: caseId,
-      currency: c.quote_currency ?? billing?.default_currency ?? "USD",
+      currency: withQuote(c).quote_currency ?? billing?.default_currency ?? "USD",
       issue_date: today,
       due_date: addDays(today, billing?.due_days ?? 14),
       bill_to: billTo.slice(0, 600),
@@ -93,7 +93,7 @@ export async function saveInvoice(invoiceId: string, prev: ActionResult, fd: For
 
 async function saveInvoiceInner(invoiceId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const { data: inv } = await db.from("case_invoices").select("id,case_id,status,total,invoice_no").eq("id", invoiceId).maybeSingle();
     if (!inv) return { ok: false, message: "Invoice not found." };
@@ -150,7 +150,7 @@ async function saveInvoiceInner(invoiceId: string, _: ActionResult, fd: FormData
 
 export async function deleteInvoice(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const id = String(fd.get("id"));
     const { data: inv } = await db.from("case_invoices").select("case_id,status").eq("id", id).maybeSingle();
@@ -163,7 +163,7 @@ export async function deleteInvoice(_: ActionResult, fd: FormData): Promise<Acti
 
 export async function voidInvoice(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const id = String(fd.get("id"));
     const reason = str(fd, "reason", 300);
@@ -179,7 +179,7 @@ export async function voidInvoice(_: ActionResult, fd: FormData): Promise<Action
 
 export async function savePriceItem(id: string | null, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const code = (str(fd, "code", 24) ?? "").toUpperCase().replace(/\s+/g, "-");
     const category = String(fd.get("category") ?? "other");
@@ -210,7 +210,7 @@ export async function savePriceItem(id: string | null, _: ActionResult, fd: Form
 
 export async function saveBillingSettings(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const currency = (str(fd, "default_currency", 3) ?? "USD").toUpperCase();
     if (!CUR.test(currency)) return { ok: false, message: "Enter a 3-letter currency code." };

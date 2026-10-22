@@ -10,6 +10,7 @@ export const metadata = { title: "Reports" };
 export default async function Reports({ searchParams }: { searchParams: Promise<ReportFilters> }) {
   const user = await requireStaff(can.cases);
   const staff = can.caseStaff(user);
+  const showMoney = !staff || can.finance(user);
   const f = await searchParams;
   const db = await createSessionClient();
   const [r, agents] = await Promise.all([loadReport(db, f, staff), staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([])]);
@@ -42,9 +43,9 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
         <div className="stat"><div className="k">Open</div><div className="v">{r.open}</div></div>
         <div className="stat"><div className="k">Delivered</div><div className="v">{r.delivered}</div></div>
         <div className="stat"><div className="k">Avg. days to delivery</div><div className="v">{r.avgDays === null ? "—" : r.avgDays.toFixed(1)}</div></div>
-        <div className="stat"><div className="k">Quoted</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.quoted)}</div></div>
+        {showMoney ? <><div className="stat"><div className="k">Quoted</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.quoted)}</div></div>
         <div className="stat"><div className="k">Invoiced</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.invoiced)}</div></div>
-        <div className="stat"><div className="k">Received</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.paid)}</div></div>
+        <div className="stat"><div className="k">Received</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 8 }}>{money(r.paid)}</div></div></> : null}
       </div>
       <div className="cols">
         <section className="panel"><h2>By status</h2><table className="data report-table"><tbody>{[...r.byStatus.entries()].map(([s, n]) => <tr key={s}><td><span className={`pill ${STATUS[s as CaseStatus].tone}`}>{STATUS[s as CaseStatus].en}</span></td><td className="num">{n}</td></tr>)}</tbody></table></section>
@@ -55,7 +56,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
       <section className="panel tight">
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>Case</th><th>Created</th><th>Clinic</th><th>Service</th>{staff ? <th>Agent</th> : null}<th>Status</th><th className="num">Quoted</th></tr></thead>
+            <thead><tr><th>Case</th><th>Created</th><th>Clinic</th><th>Service</th>{staff ? <th>Agent</th> : null}<th>Status</th>{showMoney ? <th className="num">Quoted</th> : null}</tr></thead>
             <tbody>
               {r.rows.slice(0, 300).map((c) => (
                 <tr key={c.id}>
@@ -65,7 +66,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
                   <td>{c.service_label ?? "—"}</td>
                   {staff ? <td className="small">{people.get(c.agent_id)?.name ?? "—"}</td> : null}
                   <td><span className={`pill ${STATUS[c.status].tone}`}>{STATUS[c.status].en}</span></td>
-                  <td className="num">{fmtMoney(c.quote_amount, c.quote_currency)}</td>
+                  {showMoney ? <td className="num">{fmtMoney(c.quote_amount, c.quote_currency)}</td> : null}
                 </tr>
               ))}
             </tbody>

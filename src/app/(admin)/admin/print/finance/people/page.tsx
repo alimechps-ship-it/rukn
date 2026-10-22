@@ -15,7 +15,7 @@ export default async function PrintPeople({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login?next=/admin/finance/people");
-  if (!can.caseStaff(user)) redirect("/admin?denied=1");
+  if (!can.finance(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const [{ people: list, from, to }, { names }, accounts, company] = await Promise.all([loadPeople(db, sp.from, sp.to), teamPeople(db), accountsWithBalance(db), loadCompany(db)]);
   const accName = new Map(accounts.map((a) => [a.id, a.name]));

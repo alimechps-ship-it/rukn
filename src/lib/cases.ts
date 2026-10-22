@@ -92,3 +92,10 @@ export function fmtDay(v: string | null | undefined) {
   if (!v) return "—";
   return new Date(v).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Africa/Cairo" });
 }
+
+/** Flattens the embedded `case_finance(quote_amount,quote_currency)` row (null for users who cannot see prices). */
+export function withQuote<T extends Record<string, unknown>>(row: T): T & { quote_amount: number | null; quote_currency: string | null } {
+  const raw = (row as { case_finance?: unknown }).case_finance;
+  const f = (Array.isArray(raw) ? raw[0] : raw) as { quote_amount?: number | null; quote_currency?: string | null } | null | undefined;
+  return { ...row, quote_amount: f?.quote_amount ?? null, quote_currency: f?.quote_currency ?? null };
+}

@@ -1,6 +1,6 @@
 export type Dir = "ltr" | "rtl";
 export type PublishStatus = "draft" | "published" | "archived";
-export type AppRole = "super_admin" | "content_manager" | "sales_manager" | "translator" | "case_manager" | "agent" | "planner" | "lab";
+export type AppRole = "super_admin" | "content_manager" | "sales_manager" | "translator" | "case_manager" | "finance_manager" | "agent" | "planner" | "lab";
 export type InquiryStatus = "new" | "in_review" | "contacted" | "qualified" | "converted" | "closed";
 export type InquiryType = "contact" | "case" | "partnership";
 

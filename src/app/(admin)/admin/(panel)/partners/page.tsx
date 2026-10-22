@@ -8,11 +8,12 @@ import { PartnerForm } from "./PartnerParts";
 export const metadata = { title: "Planners & labs" };
 
 export default async function PartnersPage() {
-  await requireStaff(can.caseStaff);
+  const user = await requireStaff(can.caseStaff);
+  const fin = can.finance(user);
   const db = await createSessionClient();
   const [{ data }, bal, { data: users }] = await Promise.all([
     db.from("partners").select("*").order("kind").order("name"),
-    partnerBalances(db),
+    fin ? partnerBalances(db) : Promise.resolve(new Map() as Awaited<ReturnType<typeof partnerBalances>>),
     db.from("profiles").select("partner_id").not("partner_id", "is", null),
   ]);
   const partners = (data ?? []) as Partner[];
@@ -20,7 +21,7 @@ export default async function PartnersPage() {
   for (const u of users ?? []) logins.set(u.partner_id as string, (logins.get(u.partner_id as string) ?? 0) + 1);
   return (
     <>
-      <div className="topbar"><div><h1>Planners & labs · المخططون والمعامل</h1><div className="sub">External treatment-planning doctors / clinics and production labs: work orders, bills and what RUKN owes them.</div></div></div>
+      <div className="topbar"><div><h1>Planners & labs · المخططون والمعامل</h1><div className="sub">{fin ? "External treatment-planning doctors / clinics and production labs: bills and what RUKN owes them." : "External treatment-planning doctors / clinics and production labs that receive work orders."}</div></div></div>
       {Object.entries(PARTNER_KINDS).map(([kind, k]) => {
         const list = partners.filter((p) => p.kind === kind);
         return (
@@ -29,7 +30,7 @@ export default async function PartnersPage() {
             {list.length ? (
               <div className="table-scroll">
                 <table className="data">
-                  <thead><tr><th>Name</th><th>Contact</th><th className="num">Open orders</th><th className="num">Done, not billed</th><th className="num">Bills awaiting review</th><th className="num">RUKN owes</th><th className="num">Logins</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Contact</th>{fin ? <><th className="num">Open orders</th><th className="num">Done, not billed</th><th className="num">Bills awaiting review</th><th className="num">RUKN owes</th></> : null}<th className="num">Logins</th></tr></thead>
                   <tbody>
                     {list.map((p) => {
                       const b = bal.get(p.id);
@@ -37,10 +38,12 @@ export default async function PartnersPage() {
                         <tr key={p.id} className="row-link" style={p.active ? undefined : { opacity: 0.5 }}>
                           <td><Link className="stretched" href={`/admin/partners/${p.id}`}><strong>{p.name}</strong></Link><div className="small muted">{[p.city, p.country].filter(Boolean).join(", ")}</div></td>
                           <td className="small">{p.contact_name}<div className="muted">{p.phone}</div></td>
+                          {fin ? <>
                           <td className="num">{b?.openOrders ?? 0}</td>
                           <td className="num small">{mm(b?.unbilled, fmtMoney)}</td>
                           <td className="num small">{mm(b?.pending, fmtMoney)}</td>
                           <td className="num"><strong style={{ color: "#b42318" }}>{mm(b?.owed, fmtMoney)}</strong></td>
+                          </> : null}
                           <td className="num">{logins.get(p.id) ?? 0}</td>
                         </tr>
                       );

@@ -14,10 +14,10 @@ export default async function AssistantPage() {
       <div className="topbar">
         <div>
           <h1>AI assistant · المساعد الذكي</h1>
-          <div className="sub">Ask in Arabic or English about cases, invoices, receivables, cash boxes and payment notices. It only reads data you are allowed to see, and never changes anything.</div>
+          <div className="sub">{can.finance(user) ? "Ask in Arabic or English about cases, invoices, receivables, cash boxes and payment notices." : "Ask in Arabic or English about cases, their status and progress."} It only reads data you are allowed to see, and never changes anything.</div>
         </div>
       </div>
-      <AssistantChat configured={isAiConfigured()} remaining={Math.max(0, AI_DAILY_LIMIT - used)} />
+      <AssistantChat finance={can.finance(user)} configured={isAiConfigured()} remaining={Math.max(0, AI_DAILY_LIMIT - used)} />
     </>
   );
 }

@@ -58,7 +58,7 @@ with sync_playwright() as p:
 
     # ---- case manager: invoice in EGP, issue ----
     cm = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
-    login(cm, E["CASEMGR_EMAIL"], E["CASEMGR_PASSWORD"])
+    login(cm, E["FINANCE_EMAIL"], E["FINANCE_PASSWORD"])
     check("Finance section in the case-manager menu", all(x in cm.inner_text("aside") for x in ["Receivables", "Cash boxes", "Person accounts"]))
     cm.goto(case_url)
     cm.get_by_role("button", name="+ New invoice").click()

@@ -1,5 +1,6 @@
 import "server-only";
 import type { Db } from "./admin";
+import { withQuote } from "./cases";
 
 export const CASH_KINDS: Record<string, { en: string; ar: string }> = {
   cash: { en: "Cash box", ar: "صندوق نقدي" },
@@ -115,10 +116,10 @@ export async function loadReceivables(db: Db, f: ReceivableFilters) {
   }
 
   // Cases that have no issued invoice yet (work that is not billed), excluding cancelled ones.
-  const { data: allCases } = await db.from("cases").select("id,code,clinic_name,agent_id,country_code,status,quote_amount,quote_currency,created_at")
+  const { data: allCases } = await db.from("cases").select("id,code,clinic_name,agent_id,country_code,status,case_finance(quote_amount,quote_currency),created_at")
     .neq("status", "cancelled").order("created_at").limit(5000);
   const billed = new Set(caseIds);
-  const unbilled = (allCases ?? []).filter((c) => !billed.has(c.id as string)
+  const unbilled = ((allCases ?? []) as Record<string, unknown>[]).map(withQuote).filter((c) => !billed.has(c.id as string)
     && (!f.agent || c.agent_id === f.agent) && (!f.country || c.country_code === f.country));
 
   return { error: error?.message ?? null, rows, byCurrency, byBucket, byAgent, unbilled };

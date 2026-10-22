@@ -14,8 +14,8 @@ export default async function PrintStatement({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login?next=/admin/statement");
-  if (!can.staff(user) || !can.cases(user)) redirect("/admin?denied=1");
-  const staff = can.caseStaff(user);
+  if (!can.finance(user) && !(can.cases(user) && !can.caseStaff(user))) redirect("/admin?denied=1");
+  const staff = can.finance(user);
   const agent = staff ? (sp.agent && /^[0-9a-f-]{36}$/i.test(sp.agent) ? sp.agent : null) : user.id;
   if (!agent) redirect("/admin/statement");
   const db = await createSessionClient();

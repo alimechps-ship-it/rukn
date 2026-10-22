@@ -15,7 +15,7 @@ export default async function PrintStatement({ params, searchParams }: { params:
   const sp = await searchParams;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login?next=/admin/finance/cash");
-  if (!can.caseStaff(user)) redirect("/admin?denied=1");
+  if (!can.finance(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const [st, { names }, company] = await Promise.all([loadStatement(db, accountId, sp.from, sp.to), teamPeople(db), loadCompany(db)]);
   if (!st) notFound();

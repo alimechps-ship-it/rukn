@@ -44,19 +44,16 @@ export async function savePartner(id: string | null, _: ActionResult, fd: FormDa
 // ---- Work orders ------------------------------------------------------------------
 export async function createWorkOrder(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
     const partnerId = String(fd.get("partner_id") ?? "");
     if (!UUID.test(partnerId)) return { ok: false, message: "Choose the planner or lab." };
     const { data: p } = await db.from("partners").select("kind,currency").eq("id", partnerId).maybeSingle();
     if (!p) return { ok: false, message: "Partner not found." };
-    const cost = str(fd, "cost_amount", 20) ? money(fd.get("cost_amount")) : null;
-    if (cost !== null && !(cost >= 0)) return { ok: false, message: "Enter a valid agreed cost." };
     const items = json<{ title?: string; text?: string }[]>(fd, "items", []).map((i) => ({ title: String(i.title ?? "").trim().slice(0, 200), text: String(i.text ?? "").trim().slice(0, 200) })).filter((i) => i.title).slice(0, 40);
     const { data, error } = await db.from("case_assignments").insert({
       case_id: caseId, partner_id: partnerId, kind: p.kind === "lab" ? "production" : "planning",
       title: str(fd, "title", 200), instructions: str(fd, "instructions", 4000), items, due_date: dateOf(fd, "due_date"),
-      cost_amount: cost, currency: (str(fd, "currency", 3) ?? p.currency).toUpperCase(),
     }).select("id,order_no").single();
     if (error) return { ok: false, message: errMessage(error) };
     refresh(); revalidatePath(`/admin/cases/${caseId}`);
@@ -66,14 +63,11 @@ export async function createWorkOrder(caseId: string, _: ActionResult, fd: FormD
 
 export async function updateWorkOrder(id: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
-    const cost = str(fd, "cost_amount", 20) ? money(fd.get("cost_amount")) : null;
-    if (cost !== null && !(cost >= 0)) return { ok: false, message: "Enter a valid agreed cost." };
     const items = json<{ title?: string; text?: string }[]>(fd, "items", []).map((i) => ({ title: String(i.title ?? "").trim().slice(0, 200), text: String(i.text ?? "").trim().slice(0, 200) })).filter((i) => i.title).slice(0, 40);
     const { error } = await db.from("case_assignments").update({
       title: str(fd, "title", 200), instructions: str(fd, "instructions", 4000), items, due_date: dateOf(fd, "due_date"),
-      cost_amount: cost, currency: (str(fd, "currency", 3) ?? "USD").toUpperCase(),
     }).eq("id", id);
     if (error) return { ok: false, message: errMessage(error) };
     refresh();
@@ -81,10 +75,26 @@ export async function updateWorkOrder(id: string, _: ActionResult, fd: FormData)
   } catch (e) { return fail(e); }
 }
 
+/** Finance: agreed cost of a work order (what RUKN pays the partner). */
+export async function setWorkOrderCost(id: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
+  try {
+    await assertStaff(can.finance);
+    const db = await createSessionClient();
+    const amount = str(fd, "cost_amount", 20) ? money(fd.get("cost_amount")) : null;
+    if (amount !== null && !(amount >= 0)) return { ok: false, message: "Enter a valid cost." };
+    const currency = (str(fd, "currency", 3) ?? "USD").toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, message: "Enter a 3-letter currency code." };
+    const { error } = await db.from("assignment_costs").upsert({ assignment_id: id, cost_amount: amount, currency, updated_at: new Date().toISOString() });
+    if (error) return { ok: false, message: errMessage(error) };
+    refresh();
+    return { ok: true, message: "Cost saved." };
+  } catch (e) { return fail(e); }
+}
+
 /** RUKN: mark received / completed / cancelled (with an optional note). */
 export async function setWorkOrderStatus(id: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    const user = await assertStaff(can.caseStaff);
+    const user = await assertStaff(can.ops);
     const db = await createSessionClient();
     const status = String(fd.get("status") ?? "");
     if (!["received", "completed", "cancelled", "assigned"].includes(status)) return { ok: false, message: "Invalid status." };
@@ -128,7 +138,7 @@ export async function addWorkMessage(id: string, _: ActionResult, fd: FormData):
 /** RUKN sends a partner file (e.g. the treatment plan) to the agent. */
 export async function sendFileToAgent(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
     const { data, error } = await db.from("case_files").update({ is_deliverable: true }).eq("id", String(fd.get("id"))).select("case_id,filename").single();
     if (error) return { ok: false, message: errMessage(error) };
@@ -141,9 +151,9 @@ export async function sendFileToAgent(_: ActionResult, fd: FormData): Promise<Ac
 /** Partner (own) or RUKN (for a partner) records a bill: selected completed work orders + extra lines. */
 export async function createPartnerBill(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    const user = await assertStaff((u) => can.caseStaff(u) || can.partner(u));
+    const user = await assertStaff((u) => can.finance(u) || can.partner(u));
     const db = await createSessionClient();
-    const staff = can.caseStaff(user);
+    const staff = can.finance(user);
     let partnerId = String(fd.get("partner_id") ?? "");
     if (!staff) {
       const { data: me } = await db.from("profiles").select("partner_id").eq("id", user.id).single();
@@ -153,7 +163,11 @@ export async function createPartnerBill(_: ActionResult, fd: FormData): Promise<
     const { data: partner } = await db.from("partners").select("currency").eq("id", partnerId).maybeSingle();
     if (!partner) return { ok: false, message: "Partner not found." };
     const woIds = fd.getAll("wo").map(String).filter((x) => UUID.test(x));
-    const { data: wos } = woIds.length ? await db.from("case_assignments").select("id,order_no,title,cost_amount,currency,case_id").in("id", woIds) : { data: [] };
+    const { data: woRows } = woIds.length ? await db.from("case_assignments").select("id,order_no,title,case_id,assignment_costs(cost_amount,currency)").in("id", woIds) : { data: [] };
+    const wos = (woRows ?? []).map((w) => {
+      const c = (w as unknown as { assignment_costs: { cost_amount: number | null; currency: string } | null }).assignment_costs;
+      return { id: w.id as string, order_no: w.order_no as string, title: w.title as string, case_id: w.case_id as string, cost_amount: c?.cost_amount ?? null, currency: c?.currency ?? partner.currency };
+    });
     const extra = json<{ title?: string; text?: string }[]>(fd, "extra", []).map((l) => ({ description: String(l.title ?? "").trim().slice(0, 300), amount: money(l.text ?? "") })).filter((l) => l.description && l.amount > 0);
     if (!(wos ?? []).length && !extra.length) return { ok: false, message: "Select at least one completed work order or add a line." };
     const wrongCur = (wos ?? []).find((w) => w.currency !== partner.currency);
@@ -163,7 +177,7 @@ export async function createPartnerBill(_: ActionResult, fd: FormData): Promise<
       currency: partner.currency, notes: str(fd, "notes", 1000),
     }).select("id,bill_no").single();
     if (error) return { ok: false, message: errMessage(error) };
-    const caseIds = [...new Set((wos ?? []).map((w) => w.case_id as string))];
+    const caseIds = [...new Set(wos.map((w) => w.case_id))];
     const { data: codes } = staff && caseIds.length ? await db.from("cases").select("id,code").in("id", caseIds) : { data: [] };
     const codeOf = new Map((codes ?? []).map((c) => [c.id as string, c.code as string]));
     const lines = [
@@ -179,7 +193,7 @@ export async function createPartnerBill(_: ActionResult, fd: FormData): Promise<
 
 export async function deletePartnerBill(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff((u) => can.caseStaff(u) || can.partner(u));
+    await assertStaff((u) => can.finance(u) || can.partner(u));
     const db = await createSessionClient();
     const { error, count } = await db.from("partner_bills").delete({ count: "exact" }).eq("id", String(fd.get("id")));
     if (error) return { ok: false, message: errMessage(error) };
@@ -191,7 +205,7 @@ export async function deletePartnerBill(_: ActionResult, fd: FormData): Promise<
 
 export async function reviewPartnerBill(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const decision = fd.get("decision") === "reject" ? "reject" : "approve";
     const { error } = await db.rpc("review_partner_bill", { p_bill: String(fd.get("id")), p_decision: decision, p_note: str(fd, "note", 300) });
@@ -203,7 +217,7 @@ export async function reviewPartnerBill(_: ActionResult, fd: FormData): Promise<
 
 export async function voidPartnerBill(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const { error } = await db.from("partner_bills").update({ status: "void", review_note: str(fd, "reason", 300) ?? "Voided" }).eq("id", String(fd.get("id")));
     if (error) return { ok: false, message: errMessage(error) };
@@ -215,7 +229,7 @@ export async function voidPartnerBill(_: ActionResult, fd: FormData): Promise<Ac
 // ---- Payments to partners -----------------------------------------------------------
 export async function payPartner(partnerId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const amount = money(fd.get("amount"));
     if (!(amount > 0)) return { ok: false, message: "Enter the amount paid." };
@@ -236,7 +250,7 @@ export async function payPartner(partnerId: string, _: ActionResult, fd: FormDat
 
 export async function voidPartnerPayment(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const { error } = await db.from("partner_payments").update({ voided: true, void_reason: str(fd, "reason", 300) ?? "Voided" }).eq("id", String(fd.get("id")));
     if (error) return { ok: false, message: errMessage(error) };

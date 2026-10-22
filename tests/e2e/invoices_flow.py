@@ -41,7 +41,7 @@ with sync_playwright() as p:
 
     # ---- Case manager sets prices ----
     cm = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
-    login(cm, E["CASEMGR_EMAIL"], E["CASEMGR_PASSWORD"])
+    login(cm, E["FINANCE_EMAIL"], E["FINANCE_PASSWORD"])
     cm.goto(f"{BASE}/admin/price-list")
     check("Price list is in the case-manager menu", "Price list & billing" in cm.inner_text("aside"))
     for code, price in [("ALN-FULL", "1200"), ("SNAP-U", "350"), ("RET-SET", "90")]:

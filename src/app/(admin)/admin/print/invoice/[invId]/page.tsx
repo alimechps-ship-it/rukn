@@ -18,7 +18,7 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
   const { invId } = await params;
   const user = await getStaffUser();
   if (!user) redirect(`/admin/login?next=/admin/print/invoice/${invId}`);
-  if (!can.staff(user) || !can.cases(user)) redirect("/admin?denied=1");
+  if (!can.staff(user) || !(can.finance(user) || (can.cases(user) && !can.caseStaff(user)))) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const { data: inv } = await db.from("case_invoices").select("*").eq("id", invId).maybeSingle();
   if (!inv) notFound();

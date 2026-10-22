@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
-import { WO_STATUS, type WorkOrder } from "@/lib/partners";
+import { costsFor, WO_STATUS, type WorkOrder } from "@/lib/partners";
 import { WorkOrdersTable } from "../partners/PartnerParts";
 
 export const metadata = { title: "Work orders" };
@@ -20,6 +20,7 @@ export default async function WorkOrders({ searchParams }: { searchParams: Promi
   const wos = (orders ?? []) as WorkOrder[];
   const { data: cases } = staff && wos.length ? await db.from("cases").select("id,code").in("id", [...new Set(wos.map((o) => o.case_id))]) : { data: [] };
   const caseCodes = new Map((cases ?? []).map((c) => [c.id as string, c.code as string]));
+  const costs = !staff || can.finance(user) ? await costsFor(db, wos.map((o) => o.id)) : undefined;
   const partnerNames = new Map((partners ?? []).map((p) => [p.id as string, p.name as string]));
   const tab = (s: string, label: string) => <Link className={`btn small ${sp.status === s || (!sp.status && !s) ? "" : "secondary"}`} href={`/admin/work${s ? `?status=${s}` : ""}`}>{label}</Link>;
   return (
@@ -34,7 +35,7 @@ export default async function WorkOrders({ searchParams }: { searchParams: Promi
         {tab("", "All")}{tab("open", "Open · مفتوحة")}{tab("review", staff ? "Done — to receive / check" : "Completed / shipped")}{tab("received", "Received")}
       </div>
       <section className="panel">
-        <WorkOrdersTable orders={wos} caseCodes={caseCodes} partnerNames={partnerNames} showCase={staff} showPartner={staff} />
+        <WorkOrdersTable orders={wos} caseCodes={caseCodes} partnerNames={partnerNames} showCase={staff} showPartner={staff} costs={costs} />
       </section>
     </>
   );

@@ -19,7 +19,7 @@ export default async function PrintVoucher({ params }: { params: Promise<{ entry
   const { entryId } = await params;
   const user = await getStaffUser();
   if (!user) redirect(`/admin/login?next=/admin/print/cash/${entryId}`);
-  if (!can.caseStaff(user)) redirect("/admin?denied=1");
+  if (!can.finance(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const { data } = await db.from("cash_entries").select("*").eq("id", entryId).maybeSingle();
   if (!data) notFound();

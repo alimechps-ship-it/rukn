@@ -113,10 +113,27 @@ with sync_playwright() as p:
     form.locator("#wo-partner").select_option(label=planner_name)
     form.locator("#wo-title").fill("Digital setup — both arches")
     form.locator("#wo-ins").fill("Max 20 steps, avoid IPR on lower incisors.")
-    form.locator("#wo-cost").fill("80")
+    check("Case manager's work-order form has no cost field", form.locator("#wo-cost").count() == 0)
     form.get_by_role("button", name="Send work order").click()
     wo1 = new_wo(cm, before)
     check("Planning work order sent from the case", wo1 is not None)
+
+    # ---- finance sets the agreed cost ----
+    fin = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
+    login(fin, E["FINANCE_EMAIL"], E["FINANCE_PASSWORD"])
+
+    def set_cost(wo, amount):
+        fin.goto(case_url)
+        fin.locator("a", has_text=wo).first.click()
+        fin.wait_for_url(re.compile(r"/admin/work/[0-9a-f-]{36}"))
+        fin.fill("#wc-amt", amount)
+        fin.fill("#wc-cur", "USD")
+        fin.get_by_role("button", name="Save cost").click()
+        ok(fin, "Cost saved")
+
+    set_cost(wo1, "80")
+    fin.reload()
+    check("Finance sees the agreed cost on the work order", "$80.00" in fin.inner_text("main"))
 
     # ---- planner portal ----
     pl = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
@@ -166,11 +183,14 @@ with sync_playwright() as p:
         cm.locator("summary", has_text="Send a work order").click()
     form.locator("#wo-partner").select_option(label=lab_name)
     form.locator("#wo-title").fill("22 aligners + 2 retainers")
-    form.locator("#wo-cost").fill("300")
     form.get_by_role("button", name="Send work order").click()
     wo2 = new_wo(cm, before)
+    set_cost(wo2, "300")
     cm.reload()
-    check("Case shows both orders and the margin line", wo1 in cm.inner_text("main") and wo2 in cm.inner_text("main") and "Invoiced − costs" in cm.inner_text("main"))
+    main = cm.inner_text("main")
+    check("Case manager sees both orders but no costs or margin", wo1 in main and wo2 in main and "Invoiced − costs" not in main and "$300.00" not in main and "$80.00" not in main)
+    fin.goto(case_url)
+    check("Finance sees the margin line", "Invoiced − costs" in fin.inner_text("main"))
 
     lb = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
     login(lb, lab_email, PW)
@@ -196,9 +216,13 @@ with sync_playwright() as p:
     pb = re.search(r"PB-\d{2}-\d{5}", lb.inner_text(".flash.ok")).group(0)
     shot(lb, "lab_bills")
 
-    # ---- case manager receives, approves, pays ----
+    # ---- case manager receives; finance approves and pays ----
     cm.goto(f"{BASE}/admin/work?status=review")
     check("Shipped order appears in 'to receive'", wo2 in cm.inner_text("main"))
+    check("Case manager has no partner bills in the menu", "Partner bills" not in cm.inner_text("aside"))
+    cm.goto(f"{BASE}/admin/partner-bills")
+    check("Case manager cannot open partner bills", "denied" in cm.url or "/partner-bills" not in cm.url)
+    cm = fin
     cm.goto(f"{BASE}/admin/partner-bills")
     bill = cm.locator("li.notice", has_text=pb)
     check("Bill awaits review with total 300", "$300.00" in bill.inner_text())

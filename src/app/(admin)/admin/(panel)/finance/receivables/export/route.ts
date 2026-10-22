@@ -13,7 +13,7 @@ function cell(v: unknown) {
 
 export async function GET(req: NextRequest) {
   const user = await getStaffUser();
-  if (!user || !can.staff(user) || !can.caseStaff(user)) return new NextResponse("Forbidden", { status: 403 });
+  if (!user || !can.staff(user) || !can.finance(user)) return new NextResponse("Forbidden", { status: 403 });
   const db = await createSessionClient();
   const r = await loadReceivables(db, Object.fromEntries(req.nextUrl.searchParams.entries()));
   const people = await profileMap(db, r.rows.map((x) => x.agent_id));

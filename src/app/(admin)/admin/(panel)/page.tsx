@@ -35,6 +35,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     ]);
     caseStats = { open: a.count ?? 0, awaiting: b.count ?? 0, production: c.count ?? 0, delivered30: d.count ?? 0 };
   }
+  let finStats: { toPrice: number; notices: number; bills: number; drafts: number } | null = null;
+  if (can.finance(user)) {
+    const head = { count: "exact" as const, head: true };
+    const [a, b, c, d] = await Promise.all([
+      db.from("case_dispatch_orders").select("id", head).eq("status", "sent"),
+      db.from("case_payment_claims").select("id", head).eq("status", "pending"),
+      db.from("partner_bills").select("id", head).eq("status", "submitted"),
+      db.from("case_invoices").select("id", head).eq("status", "draft"),
+    ]);
+    finStats = { toPrice: a.count ?? 0, notices: b.count ?? 0, bills: c.count ?? 0, drafts: d.count ?? 0 };
+  }
   const count = (rows: { status: string }[] | null, s: string) => (rows ?? []).filter((r) => r.status === s).length;
   const pending =
     (sectionsRes.data ?? []).filter((s) => s.status === "published" && hasPendingChanges(s.content_section_translations as Record<string, unknown>[], SECTION_TR_FIELDS)).length +
@@ -58,6 +69,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <div className="stat"><div className="k">Awaiting doctor approval</div><div className="v"><Link href="/admin/cases?status=awaiting_approval">{caseStats.awaiting}</Link></div></div>
           <div className="stat"><div className="k">In production</div><div className="v"><Link href="/admin/cases?status=production">{caseStats.production}</Link></div></div>
           <div className="stat"><div className="k">Delivered (30 days)</div><div className="v">{caseStats.delivered30}</div></div>
+        </div>
+      ) : null}
+      {finStats ? (
+        <div className="stats">
+          <div className="stat"><div className="k">To price · بانتظار التسعير</div><div className="v"><Link href="/admin/finance/to-price">{finStats.toPrice}</Link></div></div>
+          <div className="stat"><div className="k">Draft invoices</div><div className="v"><Link href="/admin/finance/to-price#drafts">{finStats.drafts}</Link></div></div>
+          <div className="stat"><div className="k">Payment notices to confirm</div><div className="v"><Link href="/admin/finance/notices">{finStats.notices}</Link></div></div>
+          <div className="stat"><div className="k">Partner bills to review</div><div className="v"><Link href="/admin/partner-bills">{finStats.bills}</Link></div></div>
         </div>
       ) : null}
       {stats ? (

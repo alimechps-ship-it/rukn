@@ -11,7 +11,7 @@ import type { AppRole } from "@/lib/types";
 function fail(e: unknown): ActionResult { return { ok: false, message: e instanceof Error ? e.message : "Unexpected error." }; }
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator", "case_manager", "agent", "planner", "lab"];
+const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator", "case_manager", "finance_manager", "agent", "planner", "lab"];
 function contactFields(fd: FormData) {
   const partner = String(fd.get("partner_id") ?? "");
   return {

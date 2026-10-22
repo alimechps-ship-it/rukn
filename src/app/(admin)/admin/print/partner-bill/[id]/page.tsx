@@ -14,7 +14,7 @@ export default async function PrintPartnerBill({ params }: { params: Promise<{ i
   const { id } = await params;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login?next=/admin/partner-bills");
-  if (!can.caseStaff(user) && !can.partner(user)) redirect("/admin?denied=1");
+  if (!can.finance(user) && !can.partner(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const { data: b } = await db.from("partner_bills").select("*").eq("id", id).maybeSingle();
   if (!b) notFound();
@@ -27,7 +27,7 @@ export default async function PrintPartnerBill({ params }: { params: Promise<{ i
   const paid = (pays ?? []).reduce((a, p) => a + Number(p.amount), 0);
   const words = amountInWords(Number(b.total), b.currency);
   return (
-    <PrintShell back={can.caseStaff(user) ? `/admin/partners/${b.partner_id}` : "/admin/partner-bills"} company={company} docRef={b.bill_no}>
+    <PrintShell back={can.finance(user) ? `/admin/partners/${b.partner_id}` : "/admin/partner-bills"} company={company} docRef={b.bill_no}>
       {b.status === "void" || b.status === "rejected" ? <div className="void">{b.status === "void" ? "VOID" : "REJECTED"}</div> : null}
       <div className="doc-title">
         <h1>Partner Bill<span className="ar">فاتورة مورد — {partner?.kind === "lab" ? "معمل" : "تخطيط علاجي"}</span></h1>

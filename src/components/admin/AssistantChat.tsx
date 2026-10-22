@@ -5,6 +5,11 @@ import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode }
 type Msg = { role: "user" | "assistant"; content: string; tools?: string[]; error?: boolean };
 const KEY = "rukn-assistant-chat";
 
+const OPS_SUGGESTIONS = [
+  "كم حالة مفتوحة الآن حسب الحالة؟",
+  "ما الحالات التي تنتظر موافقة الطبيب؟",
+  "كم حالة جديدة هذا الشهر حسب الدولة؟",
+];
 const SUGGESTIONS = [
   "كم المستحق على كل مندوب؟",
   "ما الفواتير المتأخرة أكثر من 30 يوم؟",
@@ -35,7 +40,7 @@ function Rich({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-export function AssistantChat({ configured, remaining }: { configured: boolean; remaining: number }) {
+export function AssistantChat({ configured, remaining , finance = true }: { configured: boolean; remaining: number ; finance?: boolean }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -80,7 +85,7 @@ export function AssistantChat({ configured, remaining }: { configured: boolean; 
         {msgs.length === 0 ? (
           <div className="chat-empty">
             <div className="chat-hello" dir="rtl">👋 أهلاً! اسألني عن الحالات، الفواتير، المستحقات، الصناديق أو إشعارات الدفع.</div>
-            <div className="chat-suggest">{SUGGESTIONS.map((s) => <button key={s} type="button" dir="rtl" onClick={() => ask(s)}>{s}</button>)}</div>
+            <div className="chat-suggest">{(finance ? SUGGESTIONS : OPS_SUGGESTIONS).map((s) => <button key={s} type="button" dir="rtl" onClick={() => ask(s)}>{s}</button>)}</div>
           </div>
         ) : null}
         {msgs.map((m, i) => (
@@ -93,7 +98,7 @@ export function AssistantChat({ configured, remaining }: { configured: boolean; 
         <div ref={end} />
       </div>
       <form className="chat-input" onSubmit={onSubmit}>
-        <textarea value={text} dir="auto" rows={2} maxLength={2000} placeholder="اكتب سؤالك… مثلاً: كم دفع المندوب عمر هذا الشهر؟" aria-label="Question"
+        <textarea value={text} dir="auto" rows={2} maxLength={2000} placeholder={finance ? "اكتب سؤالك… مثلاً: كم دفع المندوب عمر هذا الشهر؟" : "اكتب سؤالك… مثلاً: ما حالات المندوب عمر المفتوحة؟"} aria-label="Question"
           onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(text); } }} />
         <div className="chat-actions">
           <button className="btn teal" type="submit" disabled={busy || !text.trim()}>إرسال</button>

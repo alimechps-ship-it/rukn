@@ -10,7 +10,7 @@ const mm = (m: Map<string, number>) => (m.size ? [...m.entries()].map(([c, v]) =
 
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; p?: string }> }) {
   const sp = await searchParams;
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const db = await createSessionClient();
   const [{ people: list }, { people, names }, accounts] = await Promise.all([loadPeople(db, sp.from, sp.to), teamPeople(db), accountsWithBalance(db)]);
   const label = (p: { user: string | null; name: string | null }) => (p.user ? names.get(p.user) ?? "Team member" : p.name ?? "—");

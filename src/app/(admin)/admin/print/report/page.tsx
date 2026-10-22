@@ -16,6 +16,7 @@ export default async function PrintReport({ searchParams }: { searchParams: Prom
   if (!user) redirect("/admin/login?next=/admin/reports");
   if (!can.staff(user) || !can.cases(user)) redirect("/admin?denied=1");
   const staff = can.caseStaff(user);
+  const showMoney = !staff || can.finance(user);
   const db = await createSessionClient();
   const [r, company] = await Promise.all([loadReport(db, f, staff), loadCompany(db)]);
   const people = await profileMap(db, [...r.byAgent.keys(), user.id]);
@@ -41,7 +42,7 @@ export default async function PrintReport({ searchParams }: { searchParams: Prom
         </div>
         <div className="box"><h2><span>By service</span><span className="ar">حسب الخدمة</span></h2>
           <table className="t"><tbody>{[...r.byService.entries()].map(([s, n]) => <tr key={s}><td>{s}</td><td className="num">{n}</td></tr>)}</tbody></table>
-          <dl className="kv2" style={{ marginTop: 8 }}><dt>Quoted · المسعّر</dt><dd>{money(r.quoted)}</dd><dt>Invoiced · المفوتر</dt><dd>{money(r.invoiced)}</dd><dt>Received · المحصّل</dt><dd>{money(r.paid)}</dd></dl>
+          {showMoney ? <dl className="kv2" style={{ marginTop: 8 }}><dt>Quoted · المسعّر</dt><dd>{money(r.quoted)}</dd><dt>Invoiced · المفوتر</dt><dd>{money(r.invoiced)}</dd><dt>Received · المحصّل</dt><dd>{money(r.paid)}</dd></dl> : null}
         </div>
         {staff ? (
           <div className="box"><h2><span>By agent</span><span className="ar">حسب المندوب</span></h2>
@@ -54,7 +55,7 @@ export default async function PrintReport({ searchParams }: { searchParams: Prom
       </div>
       <div className="section">
         <table className="t">
-          <thead><tr><th>Case</th><th>Created</th><th>Clinic / doctor</th><th>Service</th>{staff ? <th>Agent</th> : null}<th>Status</th><th className="num">Quoted</th></tr></thead>
+          <thead><tr><th>Case</th><th>Created</th><th>Clinic / doctor</th><th>Service</th>{staff ? <th>Agent</th> : null}<th>Status</th>{showMoney ? <th className="num">Quoted</th> : null}</tr></thead>
           <tbody>
             {r.rows.map((c) => (
               <tr key={c.id}>
@@ -64,7 +65,7 @@ export default async function PrintReport({ searchParams }: { searchParams: Prom
                 <td>{c.service_label ?? "—"}</td>
                 {staff ? <td>{people.get(c.agent_id)?.name ?? "—"}</td> : null}
                 <td>{STATUS[c.status].en}</td>
-                <td className="num">{fmtMoney(c.quote_amount, c.quote_currency)}</td>
+                {showMoney ? <td className="num">{fmtMoney(c.quote_amount, c.quote_currency)}</td> : null}
               </tr>
             ))}
           </tbody>

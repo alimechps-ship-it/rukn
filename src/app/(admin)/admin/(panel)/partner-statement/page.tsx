@@ -9,8 +9,8 @@ export const metadata = { title: "Statement" };
 
 export default async function PartnerStatementPage({ searchParams }: { searchParams: Promise<{ partner?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const user = await requireStaff((u) => can.caseStaff(u) || can.partner(u));
-  const staff = can.caseStaff(user);
+  const user = await requireStaff((u) => can.finance(u) || can.partner(u));
+  const staff = can.finance(user);
   const db = await createSessionClient();
   let partnerId = sp.partner && /^[0-9a-f-]{36}$/i.test(sp.partner) ? sp.partner : null;
   if (!staff) { const { data: me } = await db.from("profiles").select("partner_id").eq("id", user.id).single(); partnerId = me?.partner_id ?? null; }

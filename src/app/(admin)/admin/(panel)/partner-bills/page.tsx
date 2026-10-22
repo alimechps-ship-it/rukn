@@ -1,13 +1,13 @@
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
-import type { WorkOrder } from "@/lib/partners";
+import { costsFor, type WorkOrder } from "@/lib/partners";
 import { BillsTable, NewBillForm, type Bill } from "../partners/PartnerParts";
 
 export const metadata = { title: "Partner bills" };
 
 export default async function PartnerBills() {
-  const user = await requireStaff((u) => can.caseStaff(u) || can.partner(u));
-  const staff = can.caseStaff(user);
+  const user = await requireStaff((u) => can.finance(u) || can.partner(u));
+  const staff = can.finance(user);
   const db = await createSessionClient();
   const [{ data: bills }, { data: pays }, { data: partners }] = await Promise.all([
     db.from("partner_bills").select("*").order("created_at", { ascending: false }).limit(300),
@@ -28,6 +28,7 @@ export default async function PartnerBills() {
     const billed = new Set(((lines ?? []) as unknown as { assignment_id: string; partner_bills: { status: string } }[]).filter((l) => ["submitted", "approved"].includes(l.partner_bills.status)).map((l) => l.assignment_id));
     billable = ((wos ?? []) as WorkOrder[]).filter((o) => !billed.has(o.id));
   }
+  const costs = await costsFor(db, billable.map((o) => o.id));
   const pending = list.filter((b) => b.status === "submitted");
   return (
     <>
@@ -40,7 +41,7 @@ export default async function PartnerBills() {
       {!staff ? (
         <section className="panel">
           <h2>New bill · فاتورة جديدة</h2>
-          <NewBillForm currency={(partners ?? [])[0]?.currency as string ?? "USD"} orders={billable} />
+          <NewBillForm currency={(partners ?? [])[0]?.currency as string ?? "USD"} orders={billable} costs={costs} />
         </section>
       ) : null}
       {staff ? (

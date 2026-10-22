@@ -14,7 +14,7 @@ export default async function PrintReceivables({ searchParams }: { searchParams:
   const f = await searchParams;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login?next=/admin/finance/receivables");
-  if (!can.caseStaff(user)) redirect("/admin?denied=1");
+  if (!can.finance(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const [r, company] = await Promise.all([loadReceivables(db, f), loadCompany(db)]);
   const people = await profileMap(db, [...r.byAgent.keys(), user.id]);

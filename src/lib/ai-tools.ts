@@ -1,7 +1,7 @@
 import "server-only";
 import type { Db } from "./admin";
 import type { ToolDef } from "./ai";
-import { ALL_STATUSES, countryName, STATUS, type CaseStatus } from "./cases";
+import { ALL_STATUSES, countryName, STATUS, withQuote, type CaseStatus } from "./cases";
 import { accountsWithBalance, ALL_CATEGORIES, loadPeople, loadReceivables, netMap } from "./finance";
 import { loadStatements } from "./statement";
 
@@ -75,10 +75,15 @@ async function names(db: Db, ids: string[]) {
   return new Map((data ?? []).map((p) => [p.id as string, (p.full_name || p.email) as string]));
 }
 
-export async function runAssistantTool(db: Db, name: string, input: Record<string, unknown>): Promise<unknown> {
+/** Tools without money data — all that a case manager (operations only) may use. */
+export const OPS_TOOL_NAMES = ["search_cases", "get_case", "case_stats"];
+export const toolsFor = (finance: boolean) => (finance ? ASSISTANT_TOOLS : ASSISTANT_TOOLS.filter((t) => OPS_TOOL_NAMES.includes(t.name)));
+
+export async function runAssistantTool(db: Db, name: string, input: Record<string, unknown>, finance = true): Promise<unknown> {
+  if (!finance && !OPS_TOOL_NAMES.includes(name)) return { error: "Money data is visible to the finance manager only." };
   switch (name) {
     case "search_cases": {
-      let q = db.from("cases").select("id,code,status,priority,clinic_name,doctor_name,patient_ref,agent_id,country_code,service_label,quote_amount,quote_currency,created_at,delivered_at")
+      let q = db.from("cases").select("id,code,status,priority,clinic_name,doctor_name,patient_ref,agent_id,country_code,service_label,case_finance(quote_amount,quote_currency),created_at,delivered_at")
         .order("created_at", { ascending: false }).limit(Math.min(50, Number(input.limit) || 25));
       if (typeof input.status === "string" && ALL_STATUSES.includes(input.status as CaseStatus)) q = q.eq("status", input.status);
       if (input.open_only) q = q.not("status", "in", "(delivered,cancelled)");
@@ -97,7 +102,7 @@ export async function runAssistantTool(db: Db, name: string, input: Record<strin
       const { data, error } = await q;
       if (error) return { error: error.message };
       const nm = await names(db, (data ?? []).map((c) => c.agent_id as string));
-      return { count: (data ?? []).length, cases: (data ?? []).map((c) => ({
+      return { count: (data ?? []).length, cases: ((data ?? []) as Record<string, unknown>[]).map(withQuote).map((c) => ({
         code: c.code, status: STATUS[c.status as CaseStatus]?.en, priority: c.priority, clinic: c.clinic_name, doctor: c.doctor_name, patient_ref: c.patient_ref,
         agent: nm.get(c.agent_id as string), country: countryName(c.country_code as string), service: c.service_label,
         price: c.quote_amount ? `${c.quote_amount} ${c.quote_currency}` : null, created: String(c.created_at).slice(0, 10), delivered: c.delivered_at ? String(c.delivered_at).slice(0, 10) : null,
@@ -105,9 +110,10 @@ export async function runAssistantTool(db: Db, name: string, input: Record<strin
     }
     case "get_case": {
       const code = String(input.code ?? "").trim().toUpperCase();
-      const { data: c } = await db.from("cases").select("*").eq("code", code).maybeSingle();
+      const { data: c0 } = await db.from("cases").select("*,case_finance(quote_amount,quote_currency)").eq("code", code).maybeSingle();
+      const c = c0 ? withQuote(c0 as Record<string, any>) : null; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!c) return { error: `Case ${code} not found (or not visible to you).` };
-      const [{ data: invs }, { data: pays }, { data: notices }, { data: events }] = await Promise.all([
+      const [{ data: invs }, { data: pays }, { data: notices }, { data: events }] = !finance ? [{ data: null }, { data: null }, { data: null }, await db.from("case_events").select("kind,body,from_status,to_status,created_at").eq("case_id", c.id).order("created_at", { ascending: false }).limit(12)] : await Promise.all([
         db.from("case_invoices").select("invoice_no,status,issue_date,due_date,currency,total,revision").eq("case_id", c.id),
         db.from("case_payments").select("receipt_no,amount,currency,method,paid_at,voided,invoice_id").eq("case_id", c.id),
         db.from("case_payment_claims").select("notice_no,status,amount,currency,paid_at,reference,ai_status,ai_summary").eq("case_id", c.id),
@@ -120,8 +126,7 @@ export async function runAssistantTool(db: Db, name: string, input: Record<strin
         agent: nm.get(c.agent_id), case_manager: c.assigned_to ? nm.get(c.assigned_to) : null,
         created: c.created_at, records_received: c.intake_received_at, plan_approved: c.plan_approved_at ? `${c.plan_approved_at} by ${c.plan_approved_by}` : null,
         shipped: c.shipped_at ? `${c.shipped_at} ${c.carrier ?? ""} ${c.tracking_no ?? ""}` : null, delivered: c.delivered_at ? `${c.delivered_at} to ${c.received_by_name ?? ""}` : null,
-        price: c.quote_amount ? `${c.quote_amount} ${c.quote_currency}` : null,
-        invoices: invs, payments: pays, payment_notices: notices,
+        ...(finance ? { price: c.quote_amount ? `${c.quote_amount} ${c.quote_currency}` : null, invoices: invs, payments: pays, payment_notices: notices } : {}),
         latest_events: (events ?? []).map((e) => ({ at: String(e.created_at).slice(0, 16), kind: e.kind, text: e.body ?? `${e.from_status ?? ""} → ${e.to_status ?? ""}` })),
       };
     }

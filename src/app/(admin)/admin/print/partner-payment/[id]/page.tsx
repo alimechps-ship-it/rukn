@@ -14,7 +14,7 @@ export default async function PrintPartnerPayment({ params }: { params: Promise<
   const { id } = await params;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login");
-  if (!can.caseStaff(user) && !can.partner(user)) redirect("/admin?denied=1");
+  if (!can.finance(user) && !can.partner(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   const { data: p } = await db.from("partner_payments").select("*").eq("id", id).maybeSingle();
   if (!p) notFound();
@@ -23,11 +23,11 @@ export default async function PrintPartnerPayment({ params }: { params: Promise<
     p.bill_id ? db.from("partner_bills").select("bill_no,partner_ref,total").eq("id", p.bill_id).maybeSingle() : Promise.resolve({ data: null }),
     loadCompany(db),
   ]);
-  const { data: box } = can.caseStaff(user) && p.cash_account_id ? await db.from("cash_accounts").select("name").eq("id", p.cash_account_id).maybeSingle() : { data: null };
+  const { data: box } = can.finance(user) && p.cash_account_id ? await db.from("cash_accounts").select("name").eq("id", p.cash_account_id).maybeSingle() : { data: null };
   const people = await profileMap(db, [p.created_by]);
   const words = amountInWords(Number(p.amount), p.currency);
   return (
-    <PrintShell back={can.caseStaff(user) ? `/admin/partners/${p.partner_id}` : "/admin/partner-statement"} company={company} docRef={p.payment_no}>
+    <PrintShell back={can.finance(user) ? `/admin/partners/${p.partner_id}` : "/admin/partner-statement"} company={company} docRef={p.payment_no}>
       {p.voided ? <div className="void">VOID</div> : null}
       <div className="doc-title">
         <h1>Payment Voucher<span className="ar">سند صرف لمورد</span></h1>

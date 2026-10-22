@@ -10,7 +10,7 @@ export const metadata = { title: "Cash boxes" };
 const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
 
 export default async function CashPage() {
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const db = await createSessionClient();
   const [accounts, { people, names }, { data: recent }] = await Promise.all([
     accountsWithBalance(db),

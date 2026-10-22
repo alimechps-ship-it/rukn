@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { can, getStaffUser } from "@/lib/auth";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
-import { ARCHES, countryName, FILE_CATEGORIES, fmtDay, fmtMoney, PAYMENT_METHODS, SEXES, STATUS, type CaseStatus } from "@/lib/cases";
+import { ARCHES, countryName, FILE_CATEGORIES, fmtDay, fmtMoney, PAYMENT_METHODS, SEXES, STATUS, withQuote, type CaseStatus } from "@/lib/cases";
 import { PrintShell } from "../../../PrintShell";
 import { loadCompany } from "../../../company";
 
@@ -36,8 +36,10 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
   if (!can.staff(user) || !can.cases(user)) redirect("/admin?denied=1");
   if (!(doc in DOCS)) notFound();
   const db = await createSessionClient();
-  const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
-  if (!c) notFound();
+  const { data: c0 } = await db.from("cases").select("*,case_finance(quote_amount,quote_currency)").eq("id", id).maybeSingle();
+  if (!c0) notFound();
+  const c = withQuote(c0 as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const showMoney = !can.caseStaff(user) || can.finance(user);
   const company = await loadCompany(db);
   const [{ data: files }, { data: events }, { data: payments }, { data: invoices }] = await Promise.all([
     db.from("case_files").select("filename,category,is_deliverable,created_at").eq("case_id", id).order("created_at"),
@@ -77,6 +79,7 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
 
   // ---------------- Payment receipt ----------------
   if (doc === "receipt") {
+    if (!showMoney) redirect("/admin?denied=1");
     const pay = (payments ?? []).find((x) => x.id === p);
     if (!pay) notFound();
     const { data: inv } = pay.invoice_id
@@ -233,7 +236,7 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
         </div>
       </div>
       <div className="grid2 section">
-        <div className="box">
+        {showMoney ? <div className="box">
           <H en="Payments" ar="المدفوعات" />
           <dl className="kv2">
             <dt>Quoted</dt><dd>{fmtMoney(c.quote_amount, c.quote_currency)}</dd>
@@ -241,7 +244,7 @@ export default async function PrintCase({ params, searchParams }: { params: Prom
             <dt>Invoices</dt><dd>{(invoices ?? []).map((x) => `${x.invoice_no} (${fmtMoney(x.total, x.currency)}${x.status === "void" ? ", void" : ""})`).join(", ") || "—"}</dd>
             <dt>Receipts</dt><dd>{(payments ?? []).map((x) => x.receipt_no + (x.voided ? " (void)" : "")).join(", ") || "—"}</dd>
           </dl>
-        </div>
+        </div> : <div />}
         <div className="box">
           <H en="Shipping & delivery" ar="الشحن والتسليم" />
           <dl className="kv2">

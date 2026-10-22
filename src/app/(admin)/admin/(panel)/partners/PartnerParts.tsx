@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { fmtDay, fmtMoney } from "@/lib/cases";
-import { BILL_STATUS, PARTNER_KINDS, WO_STATUS, WORK_KINDS, type Partner, type WorkOrder } from "@/lib/partners";
+import { BILL_STATUS, PARTNER_KINDS, WO_STATUS, WORK_KINDS, type CostMap, type Partner, type WorkOrder } from "@/lib/partners";
 import { ItemsEditor } from "@/components/admin/ItemsEditor";
 import { createPartnerBill, deletePartnerBill, reviewPartnerBill, savePartner, voidPartnerBill } from "../_actions/partners";
 
@@ -43,14 +43,16 @@ export function PartnerForm({ p }: { p?: Partner }) {
   );
 }
 
-export function WorkOrdersTable({ orders, partnerNames, caseCodes, showPartner, showCase }: {
+export function WorkOrdersTable({ orders, partnerNames, caseCodes, showPartner, showCase, costs }: {
   orders: WorkOrder[]; partnerNames?: Map<string, string>; caseCodes?: Map<string, string>; showPartner?: boolean; showCase?: boolean;
+  /** Agreed costs — pass only for finance and partners; omitted for the case manager. */
+  costs?: CostMap;
 }) {
   if (!orders.length) return <p className="small muted">No work orders yet.</p>;
   return (
     <div className="table-scroll">
       <table className="data">
-        <thead><tr><th>Order</th>{showCase ? <th>Case</th> : null}{showPartner ? <th>Partner</th> : null}<th>Work</th><th>Due</th><th>Status</th><th className="num">Agreed cost</th></tr></thead>
+        <thead><tr><th>Order</th>{showCase ? <th>Case</th> : null}{showPartner ? <th>Partner</th> : null}<th>Work</th><th>Due</th><th>Status</th>{costs ? <th className="num">Agreed cost</th> : null}</tr></thead>
         <tbody>
           {orders.map((o) => {
             const st = WO_STATUS[o.status];
@@ -63,7 +65,7 @@ export function WorkOrdersTable({ orders, partnerNames, caseCodes, showPartner, 
                 <td><span className="small muted">{WORK_KINDS[o.kind]?.en} · </span>{o.title}</td>
                 <td className="small nowrap" style={late ? { color: "#b42318", fontWeight: 600 } : undefined}>{o.due_date ? fmtDay(o.due_date) : "—"}{late ? " · late" : ""}</td>
                 <td><span className={`pill ${st?.tone}`}>{st?.en}</span></td>
-                <td className="num nowrap">{o.cost_amount !== null ? fmtMoney(o.cost_amount, o.currency) : "—"}</td>
+                {costs ? <td className="num nowrap">{costs.get(o.id)?.amount != null ? fmtMoney(costs.get(o.id)!.amount, costs.get(o.id)!.currency) : "—"}</td> : null}
               </tr>
             );
           })}
@@ -120,7 +122,7 @@ export function BillsTable({ bills, staff, partnerNames, paidByBill, me }: {
 }
 
 /** New bill: tick completed (unbilled) work orders; optional extra lines (description → amount). */
-export function NewBillForm({ partnerId, currency, orders, caseCodes }: { partnerId?: string; currency: string; orders: WorkOrder[]; caseCodes?: Map<string, string> }) {
+export function NewBillForm({ partnerId, currency, orders, caseCodes, costs }: { partnerId?: string; currency: string; orders: WorkOrder[]; caseCodes?: Map<string, string>; costs: CostMap }) {
   return (
     <ActionForm action={createPartnerBill} className="form-grid" resetOnSuccess>
       {partnerId ? <input type="hidden" name="partner_id" value={partnerId} /> : null}
@@ -131,7 +133,7 @@ export function NewBillForm({ partnerId, currency, orders, caseCodes }: { partne
             {orders.map((o) => (
               <label key={o.id} className="check">
                 <input type="checkbox" name="wo" value={o.id} defaultChecked />
-                <span><span className="mono">{o.order_no}</span> — {o.title}{caseCodes?.get(o.case_id) ? ` (${caseCodes.get(o.case_id)})` : ""} · <strong>{o.cost_amount !== null ? fmtMoney(o.cost_amount, o.currency) : "no agreed price"}</strong></span>
+                <span><span className="mono">{o.order_no}</span> — {o.title}{caseCodes?.get(o.case_id) ? ` (${caseCodes.get(o.case_id)})` : ""} · <strong>{costs.get(o.id)?.amount != null ? fmtMoney(costs.get(o.id)!.amount, costs.get(o.id)!.currency) : "no agreed price yet"}</strong></span>
               </label>
             ))}
           </div>

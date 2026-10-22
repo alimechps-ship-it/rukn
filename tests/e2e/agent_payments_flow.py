@@ -55,14 +55,18 @@ with sync_playwright() as p:
     cm.goto(case_url)
     cm.set_input_files("#cf-file", E["PLAN_FILE"])
     cm.wait_for_selector(".timeline li:has-text('Uploaded')", timeout=60000)
-    cm.get_by_role("button", name="+ New invoice").click()
-    cm.wait_for_url(re.compile(r"/invoices/[0-9a-f-]{36}"), timeout=20000)
-    cm.fill("#inv-currency", "USD")
-    cm.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Description (English)']").fill("Clear aligners — comprehensive treatment")
-    cm.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Unit price']").fill("1200")
-    cm.get_by_role("button", name="Issue invoice · إصدار الفاتورة").click()
-    cm.wait_for_url(re.compile(r"issued=1"), timeout=20000)
-    inv_no = re.search(r"INV-\d{2}-\d{5}", cm.inner_text("h1")).group(0)
+    check("Case manager has no invoice button", cm.get_by_role("button", name="+ New invoice").count() == 0)
+    fin = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
+    login(fin, E["FINANCE_EMAIL"], E["FINANCE_PASSWORD"])
+    fin.goto(case_url)
+    fin.get_by_role("button", name="+ New invoice").click()
+    fin.wait_for_url(re.compile(r"/invoices/[0-9a-f-]{36}"), timeout=20000)
+    fin.fill("#inv-currency", "USD")
+    fin.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Description (English)']").fill("Clear aligners — comprehensive treatment")
+    fin.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Unit price']").fill("1200")
+    fin.get_by_role("button", name="Issue invoice · إصدار الفاتورة").click()
+    fin.wait_for_url(re.compile(r"issued=1"), timeout=20000)
+    inv_no = re.search(r"INV-\d{2}-\d{5}", fin.inner_text("h1")).group(0)
     cm.goto(case_url)
     cm.locator("summary", has_text="Shipment").click()
     cm.fill("input[name=carrier]", "Aramex")
@@ -91,6 +95,8 @@ with sync_playwright() as p:
     a1.goto(case_url)
 
     # ---- agent sends a payment notice with proof ----
+    ops = cm
+    cm = fin  # from here on the finance manager handles the money
     form = a1.locator("details:has(summary:has-text('I sent a payment'))")
     if form.get_attribute("open") is None:
         form.locator("summary").click()
@@ -108,7 +114,11 @@ with sync_playwright() as p:
     st = a1.inner_text("main")
     check("Agent statement: balance 1,200 and 500 awaiting confirmation", "$1,200.00" in st and "$500.00" in st, st[:400])
 
-    # ---- case manager confirms ----
+    # ---- finance manager confirms (the case manager cannot) ----
+    ops.goto(f"{BASE}/admin/finance/notices")
+    check("Case manager cannot open payment notices", "denied" in ops.url or "/finance/notices" not in ops.url)
+    ops.goto(case_url)
+    check("Case manager does not see the payment notice on the case", pn not in ops.inner_text("main"))
     cm.goto(f"{BASE}/admin/finance/notices")
     check("Notice appears for the case manager (menu badge + list)", pn in cm.inner_text("main") and cm.locator("aside a:has-text('Payment notices') .badge-count").count() == 1)
     shot(cm, "cm_notices")

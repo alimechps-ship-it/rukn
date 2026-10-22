@@ -9,7 +9,7 @@ export const metadata = { title: "Payment notices" };
 
 export default async function NoticesPage({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
   const sp = await searchParams;
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const db = await createSessionClient();
   const [{ data: pending }, { data: recent }, { data: boxes }] = await Promise.all([
     db.from("case_payment_claims").select("*").eq("status", "pending").order("created_at"),

@@ -8,7 +8,7 @@ import { createSessionClient, fmtDate } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { ARCHES, FILE_CATEGORIES, fmtDay, fmtMoney, SEXES } from "@/lib/cases";
 import { WO_STATUS, WORK_KINDS, type WorkOrder } from "@/lib/partners";
-import { addWorkMessage, partnerWorkAction, sendFileToAgent, setWorkOrderStatus, updateWorkOrder } from "../../_actions/partners";
+import { addWorkMessage, partnerWorkAction, sendFileToAgent, setWorkOrderCost, setWorkOrderStatus, updateWorkOrder } from "../../_actions/partners";
 
 export const metadata = { title: "Work order" };
 const kb = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -20,15 +20,18 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const user = await requireStaff((u) => can.caseStaff(u) || can.partner(u));
   const staff = can.caseStaff(user);
+  const ops = can.ops(user);
+  const fin = can.finance(user);
   const db = await createSessionClient();
   const { data } = await db.from("case_assignments").select("*").eq("id", id).maybeSingle();
   if (!data) notFound();
   const o = data as WorkOrder;
-  const [{ data: brief }, { data: files }, { data: events }, { data: partner }] = await Promise.all([
+  const [{ data: brief }, { data: files }, { data: events }, { data: partner }, { data: cost }] = await Promise.all([
     db.rpc("work_order_brief", { p_id: id }),
     db.from("case_files").select("*").eq("case_id", o.case_id).order("created_at"),
     db.from("assignment_events").select("*").eq("assignment_id", id).order("created_at"),
     db.from("partners").select("id,name,kind").eq("id", o.partner_id).single(),
+    fin || !staff ? db.from("assignment_costs").select("cost_amount,currency").eq("assignment_id", id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const b = brief as Brief | null;
   const people = await profileMap(db, [...(events ?? []).map((e) => e.author_id), ...(files ?? []).map((f) => f.uploaded_by)]);
@@ -127,7 +130,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
                         <td className="small muted">{people.get(f.uploaded_by)?.name ?? (f.internal ? partner?.name : "Clinic / agent")}<br />{fmtDate(f.created_at)}</td>
                         <td className="actions">
                           <a className="btn secondary small" href={`/admin/cases/${o.case_id}/files/${f.id}`}>Download</a>
-                          {staff && f.internal ? (
+                          {ops && f.internal ? (
                             <ActionForm action={sendFileToAgent} className="inline-ai">
                               <input type="hidden" name="id" value={f.id} />
                               <SubmitButton className="btn teal small" pendingText="Sending…">Send to agent →</SubmitButton>
@@ -140,7 +143,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
                 </table>
               </div>
             ) : <p className="small muted">No files yet.</p>}
-            {open ? (
+            {open && (ops || !staff) ? (
               <div style={{ marginTop: 12 }}>
                 <h3 style={{ fontSize: "1rem", margin: "0 0 6px" }}>{staff ? "Upload for the partner" : "Upload your work · رفع ملفاتكم"}</h3>
                 <CaseFileUploader caseId={o.case_id} staff={staff} categories={staff ? undefined : ["treatment_plan", "photos", "other"]} defaultCategory={staff ? "other" : isLab ? "photos" : "treatment_plan"} />
@@ -158,7 +161,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
               {o.instructions ? <><dt>Instructions</dt><dd style={{ whiteSpace: "pre-line" }}>{o.instructions}</dd></> : null}
               {o.items?.length ? <><dt>Items</dt><dd><ul style={{ margin: 0, paddingInlineStart: 18 }}>{o.items.map((i, n) => <li key={n}>{i.title}{i.text ? ` — ${i.text}` : ""}</li>)}</ul></dd></> : null}
               <dt>Due date</dt><dd>{o.due_date ? fmtDay(o.due_date) : "—"}</dd>
-              <dt>Agreed cost</dt><dd><strong>{o.cost_amount !== null ? fmtMoney(o.cost_amount, o.currency) : "—"}</strong></dd>
+              {fin || !staff ? <><dt>Agreed cost</dt><dd><strong>{cost?.cost_amount != null ? fmtMoney(cost.cost_amount, cost.currency) : "—"}</strong></dd></> : null}
               {o.accepted_at ? <><dt>Accepted</dt><dd>{fmtDate(o.accepted_at)}</dd></> : null}
               {o.completed_at ? <><dt>Completed</dt><dd>{fmtDate(o.completed_at)}</dd></> : null}
               {o.shipped_at ? <><dt>Shipped</dt><dd>{fmtDate(o.shipped_at)}{o.carrier ? ` · ${o.carrier}` : ""}{o.tracking_no ? ` · ${o.tracking_no}` : ""}</dd></> : null}
@@ -167,7 +170,17 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
             </dl>
           </section>
 
-          {staff ? (
+          {fin ? (
+            <section className="panel">
+              <h2>Agreed cost · التكلفة المتفق عليها</h2>
+              <ActionForm action={setWorkOrderCost.bind(null, id)} className="form-grid">
+                <div className="field"><label htmlFor="wc-amt">Cost</label><input id="wc-amt" type="number" name="cost_amount" min="0" step="0.01" defaultValue={cost?.cost_amount ?? ""} /></div>
+                <div className="field"><label htmlFor="wc-cur">Currency</label><input id="wc-cur" type="text" name="currency" maxLength={3} defaultValue={cost?.currency ?? "USD"} /></div>
+                <div className="full"><SubmitButton className="btn secondary small">Save cost</SubmitButton></div>
+              </ActionForm>
+            </section>
+          ) : null}
+          {ops ? (
             <section className="panel">
               <h2>RUKN actions</h2>
               <ActionForm action={setWorkOrderStatus.bind(null, id)} className="form-grid">
@@ -189,8 +202,6 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
                   <div className="field full"><label htmlFor="we-ins">Instructions</label><textarea id="we-ins" name="instructions" rows={3} maxLength={4000} defaultValue={o.instructions ?? ""} dir="auto" /></div>
                   <div className="field full"><label>Items (item → quantity)</label><ItemsEditor name="items" initial={o.items ?? []} dir="ltr" /></div>
                   <div className="field"><label htmlFor="we-due">Due date</label><input id="we-due" type="date" name="due_date" defaultValue={o.due_date ?? ""} /></div>
-                  <div className="field"><label htmlFor="we-cost">Agreed cost</label><input id="we-cost" type="number" name="cost_amount" min="0" step="0.01" defaultValue={o.cost_amount ?? ""} /></div>
-                  <div className="field"><label htmlFor="we-cur">Currency</label><input id="we-cur" type="text" name="currency" maxLength={3} defaultValue={o.currency} /></div>
                   <div className="full"><SubmitButton className="btn secondary small">Save order</SubmitButton></div>
                 </ActionForm>
               </details>

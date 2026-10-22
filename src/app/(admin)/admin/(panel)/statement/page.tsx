@@ -9,8 +9,8 @@ export const metadata = { title: "Account statement" };
 
 export default async function StatementPage({ searchParams }: { searchParams: Promise<{ agent?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
-  const user = await requireStaff(can.cases);
-  const staff = can.caseStaff(user);
+  const user = await requireStaff((u) => can.finance(u) || (can.cases(u) && !can.caseStaff(u)));
+  const staff = can.finance(user);
   const agent = staff ? (sp.agent && /^[0-9a-f-]{36}$/i.test(sp.agent) ? sp.agent : null) : user.id;
   const db = await createSessionClient();
   const [st, agents] = await Promise.all([loadStatements(db, { agent, from: sp.from, to: sp.to }), staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([])]);

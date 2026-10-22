@@ -14,8 +14,8 @@ export const metadata = { title: "Invoice" };
 export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string; invId: string }>; searchParams: Promise<{ issued?: string; revised?: string; was?: string }> }) {
   const { id, invId } = await params;
   const sp = await searchParams;
-  const user = await requireStaff(can.cases);
-  const staff = can.caseStaff(user);
+  const user = await requireStaff((u) => can.finance(u) || (can.cases(u) && !can.caseStaff(u)));
+  const staff = can.finance(user);
   const db = await createSessionClient();
   const [{ data: inv }, { data: c }] = await Promise.all([
     db.from("case_invoices").select("*").eq("id", invId).eq("case_id", id).maybeSingle(),

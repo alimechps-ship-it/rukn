@@ -372,23 +372,29 @@ reset role;
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'agent1@test.local'),
   ('00000000-0000-0000-0000-0000000000a2', 'agent2@test.local'),
-  ('00000000-0000-0000-0000-0000000000c1', 'casemgr@test.local');
+  ('00000000-0000-0000-0000-0000000000c1', 'casemgr@test.local'),
+  ('00000000-0000-0000-0000-0000000000d1', 'finance@test.local');
 insert into public.user_roles (user_id, role) values
   ('00000000-0000-0000-0000-0000000000a1', 'agent'),
   ('00000000-0000-0000-0000-0000000000a2', 'agent'),
-  ('00000000-0000-0000-0000-0000000000c1', 'case_manager');
+  ('00000000-0000-0000-0000-0000000000c1', 'case_manager'),
+  ('00000000-0000-0000-0000-0000000000d1', 'finance_manager');
 
 -- Agent 1 creates a case
 select t.login('00000000-0000-0000-0000-0000000000a1');
 set role authenticated;
 do $$ declare v_code text; v_agent uuid; begin
-  insert into public.cases (agent_id, clinic_name, doctor_name, country_code, patient_ref, status, quote_amount, quote_currency)
-  values ('00000000-0000-0000-0000-0000000000a2', 'Smile Clinic', 'Dr. Test', 'EG', 'P-001', 'delivered', 999, 'USD')
+  insert into public.cases (agent_id, clinic_name, doctor_name, country_code, patient_ref, status)
+  values ('00000000-0000-0000-0000-0000000000a2', 'Smile Clinic', 'Dr. Test', 'EG', 'P-001', 'delivered')
   returning code, agent_id into v_code, v_agent;
   perform t.ok(v_code ~ '^RK-EG-[0-9]{2}-[0-9]{5}$', 'agent can create a case; code generated (' || v_code || ')');
   perform t.ok(v_agent = '00000000-0000-0000-0000-0000000000a1', 'agent cannot create a case on behalf of another agent');
 end $$;
-select t.ok((select status = 'submitted' and quote_amount is null from public.cases where patient_ref = 'P-001'), 'agent cannot set status or price on creation');
+select t.ok((select status = 'submitted' from public.cases where patient_ref = 'P-001'), 'agent cannot set the status on creation');
+do $$ begin
+  insert into public.case_finance (case_id, quote_amount, quote_currency) select id, 1, 'USD' from public.cases where patient_ref = 'P-001';
+  perform t.ok(false, 'agent must not set a price');
+exception when insufficient_privilege then perform t.ok(true, 'agent cannot set a price on his case'); end $$;
 select t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001'), 'case submission is logged on the timeline');
 do $$ begin
   update public.cases set status = 'delivered', clinic_name = 'Smile Clinic 2' where patient_ref = 'P-001';
@@ -463,11 +469,23 @@ select t.ok((select count(*) = 0 from public.inquiries), 'case manager cannot re
 do $$ begin
   update public.cases set intake_received_at = now(), intake_items = '[{"title":"Upper/lower STL","text":"1"}]', status = 'records_received' where patient_ref = 'P-001';
   perform t.ok((select intake_no ~ '^RR-[0-9]{2}-[0-9]{5}$' from public.cases where patient_ref = 'P-001'), 'records intake gets a receipt number');
-  update public.cases set status = 'awaiting_approval', quote_amount = 450, quote_currency = 'USD' where patient_ref = 'P-001';
-  insert into public.case_payments (case_id, amount, currency, method) select id, 200, 'USD', 'bank_transfer' from public.cases where patient_ref = 'P-001';
-  perform t.ok((select receipt_no ~ '^RC-[0-9]{2}-[0-9]{5}$' from public.case_payments limit 1), 'payment gets a receipt number');
+  update public.cases set status = 'awaiting_approval' where patient_ref = 'P-001';
+  begin
+    insert into public.case_payments (case_id, amount, currency, method) select id, 200, 'USD', 'bank_transfer' from public.cases where patient_ref = 'P-001';
+    perform t.ok(false, 'case manager must not record payments');
+  exception when insufficient_privilege then perform t.ok(true, 'case manager cannot record payments (finance only)'); end;
   insert into public.case_events (case_id, kind, body, author_id) select id, 'internal', 'Check bite registration', auth.uid() from public.cases where patient_ref = 'P-001';
   perform t.ok(true, 'case manager can write internal notes');
+end $$;
+reset role;
+
+-- Finance manager prices the case and records a payment
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ begin
+  insert into public.case_finance (case_id, quote_amount, quote_currency) select id, 450, 'USD' from public.cases where patient_ref = 'P-001';
+  insert into public.case_payments (case_id, amount, currency, method) select id, 200, 'USD', 'bank_transfer' from public.cases where patient_ref = 'P-001';
+  perform t.ok((select receipt_no ~ '^RC-[0-9]{2}-[0-9]{5}$' from public.case_payments limit 1), 'finance records a payment; it gets a receipt number');
 end $$;
 reset role;
 
@@ -512,7 +530,7 @@ reset role;
 -- =====================================================================
 -- CASE INVOICES
 -- =====================================================================
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 select t.ok((select count(*) >= 12 from public.case_price_items), 'case manager reads the price list');
 do $$ declare v_inv uuid; v_empty uuid; r record; begin
@@ -538,12 +556,12 @@ do $$ declare v_inv uuid; v_empty uuid; r record; begin
   update public.case_invoices set status = 'issued' where id = v_inv;
   select * into r from public.case_invoices where id = v_inv;
   perform t.ok(r.invoice_no ~ '^INV-[0-9]{2}-[0-9]{5}$' and r.issued_at is not null, 'issuing assigns the invoice number (' || r.invoice_no || ')');
-  perform t.ok((select quote_amount = 1276.80 and quote_currency = 'USD' from public.cases where patient_ref = 'P-001'), 'the case price follows the issued invoice');
+  perform t.ok((select f.quote_amount = 1276.80 and f.quote_currency = 'USD' from public.case_finance f join public.cases c on c.id = f.case_id where c.patient_ref = 'P-001'), 'the case price follows the issued invoice');
   perform t.ok((select count(*) = 1 from public.case_events e join public.cases c on c.id = e.case_id where c.patient_ref = 'P-001' and e.body like 'Invoice INV-%issued%'), 'issuing is logged on the case timeline');
   -- issued invoices can be revised by case staff (number kept, revision logged)
   update public.case_invoice_items set unit_price = 100 where invoice_id = v_inv and code = 'RET-SET';
   perform t.ok((select invoice_no = r.invoice_no and total = 1231.20 from public.case_invoices where id = v_inv), 'case staff can edit an issued invoice; number kept, totals recalculated');
-  perform t.ok((select quote_amount = 1231.20 from public.cases where patient_ref = 'P-001'), 'the case price follows the revised invoice');
+  perform t.ok((select f.quote_amount = 1231.20 from public.case_finance f join public.cases c on c.id = f.case_id where c.patient_ref = 'P-001'), 'the case price follows the revised invoice');
   perform t.ok(public.log_invoice_revision(v_inv, 1276.80, 'retainer price corrected') = 1, 'the revision is numbered');
   perform t.ok((select count(*) = 1 from public.case_events where body like 'Invoice % revised (rev. 1): 1276.80 → 1231.20 USD%'), 'the revision is logged on the case timeline with old and new totals');
   begin
@@ -603,7 +621,7 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.case_invoices) and (select count(*) = 0 from public.case_invoice_items), 'agent 2 cannot see agent 1 invoices');
 reset role;
 
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 do $$ begin
   update public.case_invoices set status = 'void', void_reason = 'Wrong retainer quantity' where status = 'issued';
@@ -618,7 +636,7 @@ reset role;
 -- =====================================================================
 -- CASH BOXES
 -- =====================================================================
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 select t.ok((select count(*) >= 3 from public.cash_accounts), 'case manager sees the cash boxes');
 do $$ declare usd uuid; egp uuid; v_pay uuid; v_no text; v_tr uuid; begin
@@ -695,7 +713,7 @@ do $$ begin
 exception when invalid_parameter_value then perform t.ok(true, 'agent cannot confirm a plan RUKN has not sent'); end $$;
 reset role;
 
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 do $$ declare v_inv uuid; v_case uuid; begin
   select id into v_case from public.cases where patient_ref = 'P-002';
@@ -754,7 +772,7 @@ do $$ begin
 exception when not_null_violation or insufficient_privilege then perform t.ok(true, 'agent 2 cannot send notices on agent 1 cases'); end $$;
 reset role;
 
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 do $$ declare v_case uuid; v_rc text; usd uuid; r record; begin
   select id into v_case from public.cases where patient_ref = 'P-002';
@@ -801,7 +819,7 @@ do $$ declare v_case uuid; v_id uuid; begin
 end $$;
 reset role;
 
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 do $$ declare v_id uuid; begin
   select id into v_id from public.case_payment_claims where amount = 77;
@@ -839,17 +857,23 @@ select t.login('00000000-0000-0000-0000-0000000000c1');
 set role authenticated;
 do $$ declare v_case uuid; v_no text; begin
   select id into v_case from public.cases where patient_ref = 'P-002';
-  insert into public.case_assignments (case_id, partner_id, kind, title, cost_amount, currency)
-    values (v_case, '00000000-0000-0000-0000-0000000000f1', 'planning', 'Digital setup, both arches', 50, 'USD') returning order_no into v_no;
+  insert into public.case_assignments (case_id, partner_id, kind, title)
+    values (v_case, '00000000-0000-0000-0000-0000000000f1', 'planning', 'Digital setup, both arches') returning order_no into v_no;
   perform t.ok(v_no ~ '^WO-[0-9]{2}-[0-9]{5}$', 'case manager sends a planning work order (' || v_no || ')');
-  insert into public.case_assignments (case_id, partner_id, kind, title, cost_amount, currency)
-    values (v_case, '00000000-0000-0000-0000-0000000000f2', 'production', '20 aligners + retainer', 300, 'USD');
+  insert into public.case_assignments (case_id, partner_id, kind, title)
+    values (v_case, '00000000-0000-0000-0000-0000000000f2', 'production', '20 aligners + retainer');
+  perform t.ok((select count(*) = 0 from public.assignment_costs), 'case manager cannot see work-order costs');
   begin
     insert into public.case_assignments (case_id, partner_id, kind, title) values (v_case, '00000000-0000-0000-0000-0000000000f1', 'production', 'x');
     perform t.ok(false, 'kind mismatch');
   exception when invalid_parameter_value then perform t.ok(true, 'production orders can only go to labs, planning to planners'); end;
   perform t.ok((select count(*) = 1 from public.case_events where case_id = v_case and kind = 'internal' and body like 'Work order WO-%planning%'), 'work order logged on the case as an internal event');
 end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+update public.assignment_costs set cost_amount = case when assignment_id = (select id from public.case_assignments where kind = 'planning' limit 1) then 50 else 300 end;
+select t.ok((select count(*) = 2 and min(cost_amount) = 50 from public.assignment_costs), 'finance sets the agreed costs of the work orders');
 reset role;
 
 select t.login('00000000-0000-0000-0000-0000000000e1');
@@ -869,8 +893,8 @@ do $$ declare v_id uuid; v_case uuid; j json; begin
     values (v_case, v_case || '/setup.stl', 'setup.stl', 2000, 'payment_proof', true);
   perform t.ok((select internal and not is_deliverable and category = 'other' from public.case_files where filename = 'setup.stl'), 'partner uploads stay internal (not sent to the agent)');
   perform t.ok((select count(*) = 0 from public.case_files where category = 'payment_proof'), 'partner cannot see payment proofs');
-  update public.case_assignments set cost_amount = 9999;
-  perform t.ok((select cost_amount = 50 from public.case_assignments), 'partner cannot change the agreed cost');
+  update public.assignment_costs set cost_amount = 9999;
+  perform t.ok((select cost_amount = 50 from public.assignment_costs), 'partner sees but cannot change the agreed cost');
   perform t.ok(public.partner_work_action(v_id, 'accept') = 'accepted', 'planner accepts the work order');
   perform t.ok(public.partner_work_action(v_id, 'complete', 'Setup ready, 18 steps') = 'completed', 'planner completes the work order');
   begin
@@ -924,7 +948,7 @@ select t.ok((select count(*) = 0 from public.case_assignments) and (select count
 select t.ok((select count(*) = 0 from public.case_events where kind = 'internal'), 'agent does not see work-order events');
 reset role;
 
-select t.login('00000000-0000-0000-0000-0000000000c1');
+select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
 do $$ declare v_bill uuid; usd uuid; v_pay uuid; begin
   select id into usd from public.cash_accounts where name = 'USD cash box';
@@ -966,6 +990,82 @@ do $$ begin
   insert into public.partner_payments (partner_id, amount, currency) values ('00000000-0000-0000-0000-0000000000f1', 1, 'USD');
   perform t.ok(false, 'partner cannot pay himself');
 exception when insufficient_privilege then perform t.ok(true, 'a partner cannot record payments'); end $$;
+reset role;
+
+-- =====================================================================
+-- CASE MANAGER vs FINANCE MANAGER — money is invisible to the case manager
+-- =====================================================================
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) >= 2 from public.cases), 'case manager still sees all cases');
+select t.ok((select count(*) = 0 from public.case_invoices) and (select count(*) = 0 from public.case_invoice_items), 'case manager cannot see invoices');
+select t.ok((select count(*) = 0 from public.case_payments) and (select count(*) = 0 from public.case_payment_claims), 'case manager cannot see payments or payment notices');
+select t.ok((select count(*) = 0 from public.cash_accounts) and (select count(*) = 0 from public.cash_entries), 'case manager cannot see cash boxes or vouchers');
+select t.ok((select count(*) = 0 from public.partner_bills) and (select count(*) = 0 from public.partner_payments), 'case manager cannot see partner bills or payments');
+select t.ok((select count(*) = 0 from public.case_finance) and (select count(*) = 0 from public.assignment_costs), 'case manager cannot see case prices or work-order costs');
+select t.ok((select count(*) = 0 from public.case_price_items) and (select count(*) = 0 from public.case_billing_settings), 'case manager cannot see the price list or bank details');
+select t.ok((select count(*) = 0 from public.case_events where kind = 'payment'), 'case manager does not see money events on the timeline');
+select t.ok((select count(*) = 0 from public.case_files where category = 'payment_proof'), 'case manager does not see payment proofs');
+select t.ok((select count(*) >= 12 from public.catalog_items()), 'case manager can list services (names and units, no prices)');
+select t.ok((select count(*) = 0 from public.audit_logs where entity_type in ('case_payments', 'cash_entries', 'case_invoices')), 'case manager cannot read money in the audit log');
+do $$ begin
+  insert into public.case_invoices (case_id) select id from public.cases limit 1;
+  perform t.ok(false, 'case manager must not create invoices');
+exception when insufficient_privilege then perform t.ok(true, 'case manager cannot create invoices'); end $$;
+do $$ begin
+  perform public.cash_transfer((select id from public.cash_accounts limit 1), (select id from public.cash_accounts limit 1), 1);
+  perform t.ok(false, 'case manager must not move money');
+exception when insufficient_privilege then perform t.ok(true, 'case manager cannot move money between boxes'); end $$;
+-- dispatch order
+do $$ declare v_case uuid; v_do uuid; v_no text; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  insert into public.case_dispatch_orders (case_id, notes, status) values (v_case, 'Full treatment', 'invoiced') returning id, order_no into v_do, v_no;
+  perform t.ok(v_no ~ '^DO-[0-9]{2}-[0-9]{5}$' and (select status = 'draft' from public.case_dispatch_orders where id = v_do), 'case manager prepares a dispatch order (' || v_no || ')');
+  begin
+    update public.case_dispatch_orders set status = 'sent' where id = v_do;
+    perform t.ok(false, 'empty dispatch');
+  exception when invalid_parameter_value then perform t.ok(true, 'an empty dispatch order cannot be sent to finance'); end;
+  insert into public.case_dispatch_lines (dispatch_id, sort_order, price_item_id, code, description, arch, unit, qty)
+    select v_do, 1, id, code, name_en, 'both', unit_en, 2 from public.catalog_items() where code = 'ALN-FULL';
+  insert into public.case_dispatch_lines (dispatch_id, sort_order, price_item_id, code, description, unit, qty)
+    select v_do, 2, id, code, name_en, unit_en, 1 from public.catalog_items() where code = 'RET-SET';
+  update public.case_dispatch_orders set status = 'sent' where id = v_do;
+  perform t.ok((select status = 'sent' and sent_at is not null from public.case_dispatch_orders where id = v_do), 'case manager sends the quantities to finance');
+  begin
+    update public.case_dispatch_lines set qty = 5 where dispatch_id = v_do;
+    perform t.ok(false, 'lines locked');
+  exception when insufficient_privilege then perform t.ok(true, 'quantities are locked once sent to finance'); end;
+  begin
+    perform public.invoice_from_dispatch(v_do);
+    perform t.ok(false, 'case manager must not invoice');
+  exception when insufficient_privilege then perform t.ok(true, 'case manager cannot turn it into an invoice'); end;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_do uuid; v_inv uuid; begin
+  update public.case_price_items set unit_price = 1000, currency = 'USD' where code = 'ALN-FULL';
+  update public.case_price_items set unit_price = 120, currency = 'USD' where code = 'RET-SET';
+  select id into v_do from public.case_dispatch_orders where status = 'sent' limit 1;
+  v_inv := public.invoice_from_dispatch(v_do);
+  perform t.ok((select status = 'draft' and subtotal = 2120 from public.case_invoices where id = v_inv), 'finance turns the dispatch order into a priced draft invoice (2 × 1000 + 120)');
+  perform t.ok((select status = 'invoiced' and invoice_id = v_inv from public.case_dispatch_orders where id = v_do), 'the dispatch order is marked invoiced');
+end $$;
+select t.ok((select count(*) >= 1 from public.case_events where kind = 'payment'), 'finance sees money events');
+select t.ok((select count(*) >= 1 from public.cash_accounts), 'finance sees the cash boxes');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_dispatch_orders where status = 'invoiced'), 'case manager sees that his dispatch order was invoiced');
+select t.ok((select count(*) = 0 from public.case_invoices), '…but still cannot open the invoice or its prices');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_dispatch_orders), 'agents do not see internal dispatch orders');
+select t.ok((select count(*) >= 1 from public.case_finance), 'agent sees the price of his own cases');
 reset role;
 
 -- Last super administrator protection (deferred trigger → check immediately)

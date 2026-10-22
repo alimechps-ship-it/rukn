@@ -30,7 +30,7 @@ const refresh = () => { revalidatePath("/admin/finance/cash"); revalidatePath("/
 
 export async function saveCashAccount(id: string | null, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const name = str(fd, "name", 80);
     const kind = String(fd.get("kind") ?? "cash");
@@ -56,7 +56,7 @@ export async function saveCashAccount(id: string | null, _: ActionResult, fd: Fo
 /** Receipt voucher (money in) or payment voucher (money out). */
 export async function addCashEntry(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const direction = fd.get("direction") === "in" ? "in" : "out";
     const account = String(fd.get("account_id") ?? "");
@@ -81,7 +81,7 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
 
 export async function updateCashEntry(id: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const { data: cur } = await db.from("cash_entries").select("direction,category,case_payment_id,transfer_group,voided").eq("id", id).maybeSingle();
     if (!cur) return { ok: false, message: "Voucher not found." };
@@ -105,7 +105,7 @@ export async function updateCashEntry(id: string, _: ActionResult, fd: FormData)
 
 export async function voidCashEntry(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const id = String(fd.get("id"));
     const reason = str(fd, "reason", 300);
@@ -122,7 +122,7 @@ export async function voidCashEntry(_: ActionResult, fd: FormData): Promise<Acti
 
 export async function transferCash(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const from = String(fd.get("from") ?? "");
     const to = String(fd.get("to") ?? "");

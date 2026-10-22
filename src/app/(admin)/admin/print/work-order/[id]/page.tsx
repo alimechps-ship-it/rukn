@@ -23,11 +23,12 @@ export default async function PrintWorkOrder({ params }: { params: Promise<{ id:
   const { data } = await db.from("case_assignments").select("*").eq("id", id).maybeSingle();
   if (!data) notFound();
   const o = data as WorkOrder;
-  const [{ data: brief }, { data: partner }, { data: files }, company] = await Promise.all([
+  const [{ data: brief }, { data: partner }, { data: files }, company, { data: cost }] = await Promise.all([
     db.rpc("work_order_brief", { p_id: id }),
     db.from("partners").select("*").eq("id", o.partner_id).single(),
     db.from("case_files").select("filename,category,internal").eq("case_id", o.case_id).order("created_at"),
     loadCompany(db),
+    db.from("assignment_costs").select("cost_amount,currency").eq("assignment_id", id).maybeSingle(),
   ]);
   const b = brief as Record<string, unknown> & { records?: { title: string; text: string }[] };
   const people = await profileMap(db, [user.id]);
@@ -79,8 +80,8 @@ export default async function PrintWorkOrder({ params }: { params: Promise<{ id:
           <div style={{ fontSize: "9pt" }}>{(files ?? []).filter((f) => !["payment_proof", "delivery_proof"].includes(f.category as string)).map((f) => f.filename).join(" · ") || "—"}</div>
         </div>
         <div className="box">
-          <H en="Agreed cost" ar="التكلفة المتفق عليها" />
-          <div className="amount" style={{ fontSize: "16pt" }}>{o.cost_amount !== null ? fmtMoney(o.cost_amount, o.currency) : "—"}</div>
+          <H en={cost ? "Agreed cost" : "Shipping"} ar={cost ? "التكلفة المتفق عليها" : "الشحن"} />
+          {cost ? <div className="amount" style={{ fontSize: "16pt" }}>{cost.cost_amount != null ? fmtMoney(cost.cost_amount, cost.currency) : "—"}</div> : null}
           {o.tracking_no ? <div className="note">Shipped: {o.carrier} · {o.tracking_no}</div> : null}
         </div>
       </div>

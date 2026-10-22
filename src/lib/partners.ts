@@ -33,7 +33,7 @@ export interface Partner {
 }
 export interface WorkOrder {
   id: string; order_no: string; case_id: string; partner_id: string; kind: string; title: string; instructions: string | null; items: { title: string; text: string }[];
-  due_date: string | null; cost_amount: number | null; currency: string; status: string; carrier: string | null; tracking_no: string | null;
+  due_date: string | null; status: string; carrier: string | null; tracking_no: string | null;
   accepted_at: string | null; completed_at: string | null; shipped_at: string | null; received_at: string | null; partner_note: string | null; created_at: string;
 }
 
@@ -44,7 +44,7 @@ const add = (m: Map<string, number>, k: string, v: number) => m.set(k, r2((m.get
 export async function partnerBalances(db: Db, partnerId?: string) {
   let bq = db.from("partner_bills").select("partner_id,currency,total,status").in("status", ["approved", "submitted"]);
   let pq = db.from("partner_payments").select("partner_id,currency,amount,voided").eq("voided", false);
-  let wq = db.from("case_assignments").select("id,partner_id,status,cost_amount,currency");
+  let wq = db.from("case_assignments").select("id,partner_id,status,assignment_costs(cost_amount,currency)");
   if (partnerId) { bq = bq.eq("partner_id", partnerId); pq = pq.eq("partner_id", partnerId); wq = wq.eq("partner_id", partnerId); }
   const [{ data: bills }, { data: pays }, { data: wos }, { data: lines }] = await Promise.all([
     bq, pq, wq, db.from("partner_bill_lines").select("assignment_id,bill_id,partner_bills!inner(status)").not("assignment_id", "is", null),
@@ -65,7 +65,8 @@ export async function partnerBalances(db: Db, partnerId?: string) {
   for (const w of wos ?? []) {
     const t = P(w.partner_id as string);
     if (OPEN_WO.includes(w.status as string) && !["completed", "shipped"].includes(w.status as string)) t.openOrders++;
-    if (["completed", "shipped", "received"].includes(w.status as string) && !billed.has(w.id as string) && w.cost_amount) add(t.unbilled, w.currency as string, Number(w.cost_amount));
+    const cost = (w as unknown as { assignment_costs: { cost_amount: number | null; currency: string } | null }).assignment_costs;
+    if (["completed", "shipped", "received"].includes(w.status as string) && !billed.has(w.id as string) && cost?.cost_amount) add(t.unbilled, cost.currency, Number(cost.cost_amount));
   }
   return out;
 }
@@ -100,3 +101,11 @@ export async function partnerStatement(db: Db, partnerId: string, from?: string,
 
 export const mm = (m: Map<string, number> | undefined, fmt: (v: number, c: string) => string) =>
   m && [...m.values()].some((v) => v !== 0) ? [...m.entries()].filter(([, v]) => v !== 0).map(([c, v]) => fmt(v, c)).join(" · ") : "—";
+
+export type CostMap = Map<string, { amount: number | null; currency: string }>;
+/** Agreed costs of work orders (visible to finance and to the partner of each order). */
+export async function costsFor(db: Db, ids: string[]): Promise<CostMap> {
+  if (!ids.length) return new Map();
+  const { data } = await db.from("assignment_costs").select("assignment_id,cost_amount,currency").in("assignment_id", ids);
+  return new Map((data ?? []).map((r) => [r.assignment_id as string, { amount: r.cost_amount as number | null, currency: r.currency as string }]));
+}

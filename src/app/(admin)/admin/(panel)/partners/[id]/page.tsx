@@ -5,7 +5,7 @@ import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
-import { mm, PARTNER_KINDS, partnerBalances, type Partner, type WorkOrder } from "@/lib/partners";
+import { costsFor, mm, PARTNER_KINDS, partnerBalances, type Partner, type WorkOrder } from "@/lib/partners";
 import { payPartner, voidPartnerPayment } from "../../_actions/partners";
 import { BillsTable, NewBillForm, PartnerForm, WorkOrdersTable, type Bill } from "../PartnerParts";
 
@@ -13,7 +13,8 @@ export const metadata = { title: "Partner" };
 
 export default async function PartnerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireStaff(can.caseStaff);
+  const user = await requireStaff(can.caseStaff);
+  const fin = can.finance(user);
   const db = await createSessionClient();
   const { data: p } = await db.from("partners").select("*").eq("id", id).maybeSingle();
   if (!p) notFound();
@@ -23,13 +24,14 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
     db.from("partner_bills").select("*").eq("partner_id", id).order("created_at", { ascending: false }),
     db.from("partner_payments").select("*").eq("partner_id", id).order("paid_at", { ascending: false }),
     db.from("profiles").select("id,full_name,email,is_active").eq("partner_id", id),
-    db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order"),
-    partnerBalances(db, id),
+    fin ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
+    fin ? partnerBalances(db, id) : Promise.resolve(new Map() as Awaited<ReturnType<typeof partnerBalances>>),
     db.from("partner_bill_lines").select("assignment_id,partner_bills!inner(status,partner_id)").eq("partner_bills.partner_id", id).not("assignment_id", "is", null),
   ]);
   const wos = (orders ?? []) as WorkOrder[];
   const { data: cases } = wos.length ? await db.from("cases").select("id,code").in("id", [...new Set(wos.map((o) => o.case_id))]) : { data: [] };
   const caseCodes = new Map((cases ?? []).map((c) => [c.id as string, c.code as string]));
+  const costs = fin ? await costsFor(db, wos.map((o) => o.id)) : undefined;
   const billed = new Set(((billLines ?? []) as unknown as { assignment_id: string; partner_bills: { status: string } }[]).filter((l) => ["submitted", "approved"].includes(l.partner_bills.status)).map((l) => l.assignment_id));
   const billable = wos.filter((o) => ["completed", "shipped", "received"].includes(o.status) && !billed.has(o.id));
   const paidByBill = new Map<string, number>();
@@ -46,29 +48,29 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
           <h1>{partner.name} {partner.active ? null : <span className="pill archived">inactive</span>}</h1>
           <div className="sub">{k?.en} · {k?.ar}{partner.contact_name ? ` · ${partner.contact_name}` : ""}{partner.phone ? ` · ${partner.phone}` : ""}</div>
         </div>
-        <div className="btn-row"><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div>
+        {fin ? <div className="btn-row"><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div> : null}
       </div>
-      <div className="stats">
+      {fin ? <div className="stats">
         <div className="stat"><div className="k">Open work orders</div><div className="v">{b?.openOrders ?? 0}</div></div>
         <div className="stat"><div className="k">Done, not billed yet</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{mm(b?.unbilled, fmtMoney)}</div></div>
         <div className="stat"><div className="k">Approved bills</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{mm(b?.approved, fmtMoney)}</div></div>
         <div className="stat"><div className="k">Paid</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6, color: "#067647" }}>{mm(b?.paid, fmtMoney)}</div></div>
         <div className="stat"><div className="k">RUKN owes · المستحق لهم</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6, color: "#b42318" }}>{mm(b?.owed, fmtMoney)}</div></div>
-      </div>
+      </div> : null}
 
       <section className="panel">
         <h2>Work orders · أوامر العمل</h2>
-        <WorkOrdersTable orders={wos} caseCodes={caseCodes} showCase />
+        <WorkOrdersTable orders={wos} caseCodes={caseCodes} showCase costs={costs} />
         <p className="small muted">Send a new work order from the case page (section “Work orders”).</p>
       </section>
 
-      <div className="case-cols">
+      {fin ? <div className="case-cols">
         <section className="panel">
           <h2>Bills · الفواتير</h2>
           <BillsTable bills={(bills ?? []) as Bill[]} staff paidByBill={paidByBill} />
           <details style={{ marginTop: 12 }}>
             <summary><strong>+ Record a bill received from {partner.name}</strong></summary>
-            <NewBillForm partnerId={id} currency={partner.currency} orders={billable} caseCodes={caseCodes} />
+            <NewBillForm partnerId={id} currency={partner.currency} orders={billable} caseCodes={caseCodes} costs={costs ?? new Map()} />
           </details>
         </section>
         <div>
@@ -113,13 +115,13 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
               </tbody></table>
             ) : <p className="small muted">No payments yet.</p>}
           </section>
-          <section className="panel">
+        </div>
+      </div> : null}
+      <section className="panel">
             <h2>Logins · حسابات الدخول</h2>
             {(users ?? []).length ? <ul>{(users ?? []).map((u) => <li key={u.id}>{u.full_name || u.email} <span className="small muted">{u.email}{u.is_active ? "" : " · inactive"}</span></li>)}</ul> : <p className="small muted">No login yet.</p>}
             <p className="small muted">Add one in <Link href="/admin/users">Users & roles</Link> with role “{partner.kind === "lab" ? "Production lab" : "Treatment planner"}” and this partner.</p>
-          </section>
-        </div>
-      </div>
+      </section>
 
       <section className="panel">
         <details>

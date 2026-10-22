@@ -60,23 +60,30 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     const db = await createSessionClient();
     const [{ count: waiting }, { count: billsToReview }] = await Promise.all([
       db.from("case_assignments").select("id", { count: "exact", head: true }).in("status", ["completed", "shipped"]),
-      db.from("partner_bills").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+      can.finance(user) ? db.from("partner_bills").select("id", { count: "exact", head: true }).eq("status", "submitted") : Promise.resolve({ count: 0 }),
     ]);
     groups.push({
       label: "Partners · المخططون والمعامل",
       items: [
         { href: "/admin/partners", label: "Planners & labs · الشركاء" },
         { href: "/admin/work", label: "Work orders · أوامر العمل", badge: waiting ?? 0 },
-        { href: "/admin/partner-bills", label: "Partner bills · فواتير الشركاء", badge: billsToReview ?? 0 },
+        ...(can.finance(user) ? [{ href: "/admin/partner-bills", label: "Partner bills · فواتير الشركاء", badge: billsToReview ?? 0 }] : []),
       ],
     });
   }
-  if (can.caseStaff(user)) {
+  if (can.caseStaff(user) && !can.finance(user)) {
+    groups.push({ label: "Tools", items: [{ href: "/admin/assistant", label: "AI assistant · المساعد الذكي" }] });
+  }
+  if (can.finance(user)) {
     const db = await createSessionClient();
-    const { count: pendingNotices } = await db.from("case_payment_claims").select("id", { count: "exact", head: true }).eq("status", "pending");
+    const [{ count: pendingNotices }, { count: toPrice }] = await Promise.all([
+      db.from("case_payment_claims").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      db.from("case_dispatch_orders").select("id", { count: "exact", head: true }).eq("status", "sent"),
+    ]);
     groups.push({
       label: "Finance · المالية",
       items: [
+        { href: "/admin/finance/to-price", label: "To price · بانتظار التسعير", badge: toPrice ?? 0 },
         { href: "/admin/assistant", label: "AI assistant · المساعد الذكي" },
         { href: "/admin/finance/notices", label: "Payment notices · إشعارات الدفع", badge: pendingNotices ?? 0 },
         { href: "/admin/statement", label: "Agent statements · كشوف المناديب" },

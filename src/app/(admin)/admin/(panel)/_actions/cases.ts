@@ -111,7 +111,7 @@ export async function updateCaseInfo(caseId: string, _: ActionResult, fd: FormDa
 
 export async function changeCaseStatus(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    const user = await assertStaff(can.caseStaff);
+    const user = await assertStaff(can.ops);
     const db = await createSessionClient();
     const status = String(fd.get("status")) as CaseStatus;
     if (!ALL_STATUSES.includes(status)) return { ok: false, message: "Invalid status." };
@@ -141,7 +141,7 @@ export async function addCaseComment(caseId: string, _: ActionResult, fd: FormDa
 
 export async function registerIntake(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
     const items = json<{ title?: string; text?: string }[]>(fd, "items", [])
       .map((i) => ({ title: String(i.title ?? "").trim().slice(0, 200), text: String(i.text ?? "").trim().slice(0, 200) }))
@@ -163,14 +163,14 @@ export async function registerIntake(caseId: string, _: ActionResult, fd: FormDa
 
 export async function saveQuote(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const amountRaw = str(fd, "quote_amount", 20);
     const currency = (str(fd, "quote_currency", 3) ?? "").toUpperCase();
     const amount = amountRaw ? Number(amountRaw) : null;
     if (amount !== null && (!Number.isFinite(amount) || amount < 0)) return { ok: false, message: "Enter a valid amount." };
     if (amount !== null && !/^[A-Z]{3}$/.test(currency)) return { ok: false, message: "Enter a 3-letter currency code (USD, EUR, EGP…)." };
-    const { error } = await db.from("cases").update({ quote_amount: amount, quote_currency: amount === null ? null : currency }).eq("id", caseId);
+    const { error } = await db.from("case_finance").upsert({ case_id: caseId, quote_amount: amount, quote_currency: amount === null ? null : currency, updated_at: new Date().toISOString() });
     if (error) return { ok: false, message: errMessage(error) };
     return { ok: true, message: "Quotation saved." };
   } catch (e) { return fail(e); }
@@ -178,7 +178,7 @@ export async function saveQuote(caseId: string, _: ActionResult, fd: FormData): 
 
 export async function addPayment(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const amount = Number(str(fd, "amount", 20));
     let currency = (str(fd, "currency", 3) ?? "").toUpperCase();
@@ -207,7 +207,7 @@ export async function addPayment(caseId: string, _: ActionResult, fd: FormData):
 
 export async function voidPayment(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const reason = str(fd, "reason", 300) ?? "Voided";
     const { error } = await db.from("case_payments").update({ voided: true, void_reason: reason }).eq("id", String(fd.get("id")));
@@ -218,7 +218,7 @@ export async function voidPayment(_: ActionResult, fd: FormData): Promise<Action
 
 export async function saveShipment(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
     const shipped = str(fd, "shipped_at", 16);
     const patch: Record<string, unknown> = {
@@ -234,7 +234,7 @@ export async function saveShipment(caseId: string, _: ActionResult, fd: FormData
 
 export async function markDelivered(caseId: string, _: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.ops);
     const db = await createSessionClient();
     const receiver = str(fd, "received_by_name", 120);
     if (!receiver) return { ok: false, message: "Enter the name of the person who received the delivery." };

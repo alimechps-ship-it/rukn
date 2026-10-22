@@ -9,7 +9,7 @@ export const metadata = { title: "Receivables" };
 const BAR = ["#16809a", "#f5b100", "#f08c00", "#e8590c", "#b42318"];
 
 export default async function Receivables({ searchParams }: { searchParams: Promise<ReceivableFilters> }) {
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const f = await searchParams;
   const db = await createSessionClient();
   const [r, agents] = await Promise.all([loadReceivables(db, f), peopleWithRole(db, ["agent"])]);

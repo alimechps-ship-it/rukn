@@ -19,6 +19,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   sales_manager: "Sales Manager",
   translator: "Translator",
   case_manager: "Case Manager",
+  finance_manager: "Finance Manager",
   agent: "Agent",
   planner: "Treatment planner (partner)",
   lab: "Production lab (partner)",
@@ -55,10 +56,15 @@ export const can = {
   /** External treatment planners and production labs (partner portal). */
   partner: (u: StaffUser | null) => !!u?.roles.some((r) => r === "planner" || r === "lab"),
   /** Can open case files: case staff, agents (own cases) and partners (their work orders) — RLS decides which. */
-  files: (u: StaffUser | null) => !!u?.roles.some((r) => ["super_admin", "case_manager", "agent", "planner", "lab"].includes(r)),
-  caseStaff: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager"),
+  files: (u: StaffUser | null) => !!u?.roles.some((r) => ["super_admin", "case_manager", "finance_manager", "agent", "planner", "lab"].includes(r)),
+  /** RUKN case back-office (reads cases): super admin, case manager, finance manager. */
+  caseStaff: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager" || r === "finance_manager"),
+  /** Case administration (intake, files, plans, work orders, dispatch orders) — no money. */
+  ops: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager"),
+  /** Prices, invoices, payments, cash, partner bills — the finance manager. */
+  finance: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "finance_manager"),
   agent: (u: StaffUser | null) => !!u?.roles.includes("agent"),
-  cases: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager" || r === "agent"),
+  cases: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager" || r === "finance_manager" || r === "agent"),
   locale: (u: StaffUser | null, locale: string) =>
     !!u && (u.roles.some((r) => r === "super_admin" || r === "content_manager") || (u.roles.includes("translator") && u.allowedLocales.includes(locale))),
 };

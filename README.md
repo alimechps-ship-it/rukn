@@ -53,7 +53,8 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 | Content Manager | pages, sections, services, media, FAQs, team, navigation, announcements, publishing, trash |
 | Sales Manager | inquiries, statuses, assignment, internal notes, CSV export |
 | Translator | draft translations **only for the languages assigned to them**; cannot publish, cannot see leads or settings |
-| Case Manager | all cases from all agents: intake, status workflow, files, quotation, payments/receipts, shipping, delivery, reports |
+| Case Manager | **operations only**: all cases from all agents — intake, status workflow, files, treatment plans, work orders to planners/labs (without costs), **dispatch orders** (services + quantities, no prices) sent to finance, shipping, delivery, reports without amounts. Sees **no** prices, invoices, payments, payment notices, cash boxes, statements or partner bills |
+| Finance Manager | all money: price list & billing, pricing dispatch orders into invoices (“To price”), invoices, quotations, payments & receipts, payment notices from agents, cash boxes, person accounts, receivables, agent statements, work-order costs, partner bills & payments, AI assistant with money tools. Can open cases (read) |
 | Treatment planner (partner) | external doctor / clinic doing digital treatment plans: sees only the work orders sent to him (clinical brief + files), uploads the plan, accepts / completes orders, bills RUKN, sees his statement |
 | Production lab (partner) | external lab producing aligners / Snap-On / retainers: same portal for production orders, can ship with tracking, bills RUKN |
 | Agent | external representative: creates cases, uploads records, follows **only his own cases**, records the doctor's plan approval, prints his documents and reports; no access to the website CMS or leads |
@@ -64,17 +65,17 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 - Files live in the **private** `case-files` bucket (50 MB each, STL/PLY/OBJ/3MF/ZIP/PDF/images/DICOM/MP4) and are opened through 2-minute signed links.
 - Printable A4 bilingual documents: case file, records receipt, payment receipt, delivery note, and the case report (also CSV export) under **Reports**.
 - **Invoices per case**: Case → *New invoice* → add items from the **Price list** (aligners, Snap-On, retainers, planning, shipping…), arch, quantity, discount and tax → *Issue* (number `INV-YY-#####`, locked, visible to the agent). Payments can be applied to an invoice; the receipt and the invoice show the balance. Issued invoices are never edited or deleted — they are voided and replaced. Billing details (bank, tax no., terms) are set under **Price list & billing** (migration `20261022000700_case_invoices.sql`).
-- **Finance** (case staff only, migration `20261022000800_finance.sql`):
+- **Finance** (finance manager only, migration `20261022000800_finance.sql`):
   - Issued invoices can be edited; the number is kept and each save is a numbered revision logged on the case timeline and in the audit log. Voided invoices stay locked.
   - **Receivables**: unpaid issued invoices with ageing (not due / 1–30 / 31–60 / 61–90 / 90+), by agent, cases without an invoice; print + CSV.
   - **Cash boxes**: cash / bank / wallet boxes, receipt vouchers `CR-`, payment vouchers `CP-`, transfers `TR-` (with exchange), statements with running balance; a box can never pay out more than its balance. A case payment can be deposited into a box in one step. Vouchers print with the amount in words (English + Arabic).
   - **Person accounts**: what each person took (custody, withdrawals, salaries…) and returned, with printable statements.
 - **Agent confirmations & payments** (migration `20261022000900_agent_receipts_payments.sql`):
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
-  - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The case manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.
+  - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The finance manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.
   - **Account statements**: every agent sees *My account* (invoices, payments, balance, pending notices; printable); case staff see all agents.
 - **AI tools** (optional, migration `20261022001000_ai.sql`, env `ANTHROPIC_API_KEY`):
-  - **AI assistant** (Finance → AI assistant, case staff only): questions in Arabic/English answered from live data through read-only tools (cases, stats, receivables, agent balances, cash boxes, person accounts, payment notices). Queries run with the user's session, so RLS applies. Daily limit per user (`AI_DAILY_LIMIT`), every request logged in `ai_usage`.
+  - **AI assistant** (case staff; the case manager gets only the case tools, finance gets all): questions in Arabic/English answered from live data through read-only tools (cases, stats, receivables, agent balances, cash boxes, person accounts, payment notices). Queries run with the user's session, so RLS applies. Daily limit per user (`AI_DAILY_LIMIT`), every request logged in `ai_usage`.
   - **Receipt reader**: when an agent attaches a transfer receipt (image/PDF) to a payment notice, it is read in the background and compared with the notice (amount, currency, date, reference) → "matches" / "differences found" shown to case staff only; "Re-check with AI" button. It never accepts or rejects by itself.
   - Local tests use `tests/e2e/mock-anthropic.mjs` (set `ANTHROPIC_BASE_URL=http://localhost:54400`).
 - **Planners & labs** (migration `20261022001100_partners.sql`):
@@ -82,6 +83,11 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - **Work orders** `WO-` sent from the case page (planning / production) with instructions, items, due date and agreed cost. The partner accepts or declines, uploads files, completes (labs also ship with tracking); messages and full history per order; printable work order.
   - Partner files stay **internal** until RUKN presses *Send to agent*. Partners never see clinic prices, agents, payments or other partners.
   - **Partner bills** `PB-` (partner sends from his completed orders, or RUKN records one) → RUKN approves / rejects; **payments** `PP-` paid from a cash box create a payment voucher automatically; partner statements (screen + print); case page shows invoiced − costs.
+- **Case manager ↔ finance separation** (migration `20261022001200_finance_separation.sql`):
+  - Case price moved to `case_finance`, work-order costs to `assignment_costs`; every money table (invoices, payments, notices, cash, price list, partner bills/payments) is readable/writable by **Finance Manager** (and Super Admin) only — enforced by RLS, so the case manager cannot reach money even through the API. Payment events and payment proofs are hidden from the case manager's timeline and files.
+  - Flow: case manager → Case → **Dispatch orders · أذون الصرف** → *+ New dispatch order* → add services from the catalog (no prices) with arch and quantity → *Send to finance*. Number `DO-YY-#####`, printable with signatures.
+  - Finance → **To price · بانتظار التسعير** (badge) → *Price & invoice* → a draft invoice is created with the price-list prices → review, *Issue*. The case manager sees only “Priced & invoiced”. He can recall a sent order while it is not yet priced.
+  - Finance sets the agreed cost of each work order (work order page → *Agreed cost*).
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -180,12 +186,13 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (217 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (247 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
-- **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
-- **Planners & labs** (27 checks: partner logins, work orders, internal files, bills, payments, statements, isolation): see `tests/e2e/partners_flow.py`.
-- **AI tools** (10 checks with the mock API): see `tests/e2e/ai_flow.py`.
-- **Agent payments** (20 checks: receipt confirmations, payment notices with proof, confirm/reject, statements): see `tests/e2e/agent_payments_flow.py`.
+- **Case manager / finance separation** (23 checks: menus and pages denied to the case manager, dispatch order → finance queue → priced invoice, no amounts visible to operations): see `tests/e2e/dispatch_flow.py`. The money e2e tests sign in with `FINANCE_EMAIL` / `FINANCE_PASSWORD`.
+- **Agents/case workflow** (28 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
+- **Planners & labs** (32 checks: partner logins, work orders, internal files, bills, payments, statements, isolation): see `tests/e2e/partners_flow.py`.
+- **AI tools** (13 checks with the mock API, incl. the case manager getting no money tools): see `tests/e2e/ai_flow.py`.
+- **Agent payments** (23 checks: receipt confirmations, payment notices with proof, confirm/reject, statements): see `tests/e2e/agent_payments_flow.py`.
 - **Finance** (21 checks: invoice revision, receivables, cash boxes, vouchers, person accounts): see `tests/e2e/finance_flow.py`.
 - **Invoices** (20 checks: price list, draft/issue/void, totals, payments, prints, agent isolation): see `tests/e2e/invoices_flow.py`.
 - **End-to-end acceptance** (27 checks against the running app + a real Supabase stack): see the header of `tests/e2e/acceptance.py`. Run it against a staging project, never production.

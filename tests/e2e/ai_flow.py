@@ -45,14 +45,24 @@ with sync_playwright() as p:
     stamp = str(int(time.time()))[-4:]
 
     # ---- assistant ----
+    ops = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
+    login(ops, E["CASEMGR_EMAIL"], E["CASEMGR_PASSWORD"])
+    check("AI assistant in the case-manager menu", "AI assistant" in ops.inner_text("aside"))
+    ops.goto(f"{BASE}/admin/assistant")
+    check("Case manager gets case questions only (no money suggestions)", ops.get_by_role("button", name="ما رصيد كل صندوق الآن؟").count() == 0)
+    ops.fill(".chat-input textarea", "كم في الصندوق؟")
+    ops.keyboard.press("Enter")
+    ops.wait_for_selector(".bubble.assistant:not(.thinking)", timeout=30000)
+    ans0 = ops.locator(".bubble.assistant").last.inner_text()
+    check("Case manager's assistant has no money tools (answers from case stats)", "USD cash box" not in ans0 and "نتيجة من النظام" in ans0, ans0[:300])
     cm = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
-    login(cm, E["CASEMGR_EMAIL"], E["CASEMGR_PASSWORD"])
-    check("AI assistant in the case-manager menu", "AI assistant" in cm.inner_text("aside"))
+    login(cm, E["FINANCE_EMAIL"], E["FINANCE_PASSWORD"])
+    check("AI assistant in the finance menu", "AI assistant" in cm.inner_text("aside"))
     cm.goto(f"{BASE}/admin/assistant")
     cm.get_by_role("button", name="ما رصيد كل صندوق الآن؟").click()
     cm.wait_for_selector(".bubble.assistant:not(.thinking)", timeout=30000)
     ans = cm.locator(".bubble.assistant").last.inner_text()
-    check("Assistant answers from the cash boxes via a tool", "نتيجة من النظام" in ans and "USD cash box" in ans and "الصناديق" in ans, ans[:300])
+    check("Assistant answers from the cash boxes via a tool", "نتيجة من النظام" in ans and "\"boxes\"" in ans and "الصناديق" in ans, ans[:300])
     cm.fill(".chat-input textarea", "كم المستحق على كل مندوب؟")
     cm.keyboard.press("Enter")
     cm.locator(".bubble.assistant:not(.thinking)").nth(1).wait_for(timeout=30000)
@@ -104,7 +114,7 @@ with sync_playwright() as p:
     n = cm.locator("li.notice", has_text=pn_bad)
     n.get_by_role("button", name=re.compile("Re-check receipt with AI")).click()
     cm.wait_for_selector(f"li.notice:has-text('{pn_bad}') .inline-ai .flash", timeout=30000)
-    check("Case manager can re-check a receipt on demand", "450" in n.locator(".inline-ai .flash").inner_text())
+    check("Finance manager can re-check a receipt on demand", "450" in n.locator(".inline-ai .flash").inner_text())
     b.close()
 
 failed = [n for n, ok in results if not ok]

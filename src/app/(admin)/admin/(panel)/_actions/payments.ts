@@ -79,7 +79,7 @@ export async function cancelPaymentNotice(_: ActionResult, fd: FormData): Promis
 /** Case manager confirms the money arrived: receipt issued, optionally deposited into a cash box. */
 export async function acceptPaymentNotice(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const box = String(fd.get("cash_account_id") ?? "");
     const amount = Number(String(fd.get("amount") ?? "").replace(/,/g, ""));
@@ -98,7 +98,7 @@ export async function acceptPaymentNotice(_: ActionResult, fd: FormData): Promis
 
 export async function rejectPaymentNotice(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    await assertStaff(can.caseStaff);
+    await assertStaff(can.finance);
     const db = await createSessionClient();
     const { error } = await db.rpc("reject_payment_claim", { p_claim: String(fd.get("id")), p_reason: str(fd, "reason", 300) });
     if (error) return { ok: false, message: errMessage(error) };
@@ -110,7 +110,7 @@ export async function rejectPaymentNotice(_: ActionResult, fd: FormData): Promis
 /** Case staff: (re)read the attached transfer receipt with AI. */
 export async function recheckReceipt(_: ActionResult, fd: FormData): Promise<ActionResult> {
   try {
-    const user = await assertStaff(can.caseStaff);
+    const user = await assertStaff(can.finance);
     const db = await createSessionClient();
     const res = await checkReceipt(db, String(fd.get("id")), user.id);
     refresh(String(fd.get("case_id") ?? ""));

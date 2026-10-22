@@ -13,10 +13,10 @@ export default async function PrintPartnerStatement({ searchParams }: { searchPa
   const sp = await searchParams;
   const user = await getStaffUser();
   if (!user) redirect("/admin/login");
-  if (!can.caseStaff(user) && !can.partner(user)) redirect("/admin?denied=1");
+  if (!can.finance(user) && !can.partner(user)) redirect("/admin?denied=1");
   const db = await createSessionClient();
   let partnerId = sp.partner && /^[0-9a-f-]{36}$/i.test(sp.partner) ? sp.partner : null;
-  if (!can.caseStaff(user)) { const { data: me } = await db.from("profiles").select("partner_id").eq("id", user.id).single(); partnerId = me?.partner_id ?? null; }
+  if (!can.finance(user)) { const { data: me } = await db.from("profiles").select("partner_id").eq("id", user.id).single(); partnerId = me?.partner_id ?? null; }
   if (!partnerId) redirect("/admin");
   const [{ data: partner }, st, company] = await Promise.all([db.from("partners").select("*").eq("id", partnerId).single(), partnerStatement(db, partnerId, sp.from, sp.to), loadCompany(db)]);
   const period = `${st.from ? fmtDay(st.from) : "Start"} → ${st.to ? fmtDay(st.to) : "Today"}`;

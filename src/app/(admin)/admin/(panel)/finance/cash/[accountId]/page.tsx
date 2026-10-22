@@ -12,7 +12,7 @@ const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFrac
 export default async function Statement({ params, searchParams }: { params: Promise<{ accountId: string }>; searchParams: Promise<{ from?: string; to?: string }> }) {
   const { accountId } = await params;
   const sp = await searchParams;
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const db = await createSessionClient();
   const st = await loadStatement(db, accountId, sp.from, sp.to);
   if (!st) notFound();

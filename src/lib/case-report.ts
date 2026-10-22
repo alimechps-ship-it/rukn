@@ -1,6 +1,6 @@
 import "server-only";
 import type { Db } from "./admin";
-import { ALL_STATUSES, type CaseStatus } from "./cases";
+import { ALL_STATUSES, withQuote, type CaseStatus } from "./cases";
 
 export type ReportFilters = { status?: string; agent?: string; country?: string; from?: string; to?: string; open?: string; q?: string; service?: string };
 
@@ -11,7 +11,7 @@ export interface ReportRow {
 }
 
 export async function loadReport(db: Db, f: ReportFilters, staff: boolean) {
-  let q = db.from("cases").select("id,code,status,priority,clinic_name,doctor_name,patient_ref,service_label,agent_id,country_code,created_at,delivered_at,quote_amount,quote_currency").order("created_at", { ascending: false }).limit(5000);
+  let q = db.from("cases").select("id,code,status,priority,clinic_name,doctor_name,patient_ref,service_label,agent_id,country_code,created_at,delivered_at,case_finance(quote_amount,quote_currency)").order("created_at", { ascending: false }).limit(5000);
   if (f.status && ALL_STATUSES.includes(f.status as CaseStatus)) q = q.eq("status", f.status);
   if (f.open === "1") q = q.not("status", "in", "(delivered,cancelled)");
   if (staff && f.agent && /^[0-9a-f-]{36}$/.test(f.agent)) q = q.eq("agent_id", f.agent);
@@ -23,7 +23,7 @@ export async function loadReport(db: Db, f: ReportFilters, staff: boolean) {
     if (t) q = q.or(`code.ilike.%${t}%,clinic_name.ilike.%${t}%,doctor_name.ilike.%${t}%,patient_ref.ilike.%${t}%`);
   }
   const { data, error } = await q;
-  const rows = (data ?? []) as unknown as ReportRow[];
+  const rows = ((data ?? []) as Record<string, unknown>[]).map(withQuote) as unknown as ReportRow[];
   const ids = rows.map((r) => r.id);
   const [{ data: pays }, { data: invs }] = ids.length
     ? await Promise.all([

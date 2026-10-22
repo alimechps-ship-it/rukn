@@ -43,7 +43,8 @@ http.createServer((req, res) => {
         content: [{ type: "text", text: `**نتيجة من النظام:**\n- ${String(toolResult.content).slice(0, 600)}` }], usage });
     }
     const q = typeof last.content === "string" ? last.content : "";
-    const tool = /صندوق|cash/i.test(q) ? "cash_summary" : /إشعار|notice/i.test(q) ? "payment_notices" : /متأخر|مستحق|receivable/i.test(q) ? "receivables" : "agent_balances";
+    const wanted = /صندوق|cash/i.test(q) ? "cash_summary" : /إشعار|notice/i.test(q) ? "payment_notices" : /متأخر|مستحق|receivable/i.test(q) ? "receivables" : /حال|case/i.test(q) ? "case_stats" : "agent_balances";
+    const tool = tools.includes(wanted) ? wanted : "case_stats"; // a case manager only gets the case tools
     return reply(res, { id: "msg_mock", type: "message", role: "assistant", model: body.model, stop_reason: "tool_use",
       content: [{ type: "text", text: "سأبحث في البيانات." }, { type: "tool_use", id: "toolu_a1", name: tool, input: tool === "payment_notices" ? { status: "all" } : {} }], usage });
   });

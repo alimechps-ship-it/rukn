@@ -30,7 +30,7 @@ function ItemFields({ p }: { p?: PriceItem }) {
 }
 
 export default async function PriceList() {
-  await requireStaff(can.caseStaff);
+  await requireStaff(can.finance);
   const db = await createSessionClient();
   const [{ data: items, error }, { data: billing }] = await Promise.all([
     db.from("case_price_items").select("*").order("sort_order").order("code"),

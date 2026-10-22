@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
-import { CASH_KINDS, loadStatement, teamPeople } from "@/lib/finance";
+import { CASH_KINDS, loadStatement, teamPeople, voucherParties } from "@/lib/finance";
 import { EntriesTable, NewEntryForm } from "../../CashForms";
 import { accountsWithBalance } from "@/lib/finance";
 
@@ -16,7 +16,7 @@ export default async function Statement({ params, searchParams }: { params: Prom
   const db = await createSessionClient();
   const st = await loadStatement(db, accountId, sp.from, sp.to);
   if (!st) notFound();
-  const [{ people, names }, accounts] = await Promise.all([teamPeople(db), accountsWithBalance(db)]);
+  const [{ people, names }, accounts, parties] = await Promise.all([teamPeople(db), accountsWithBalance(db), voucherParties(db)]);
   const a = st.account;
   const qs = new URLSearchParams(Object.entries({ from: sp.from ?? "", to: sp.to ?? "" }).filter(([, v]) => v)).toString();
   return (
@@ -42,12 +42,12 @@ export default async function Statement({ params, searchParams }: { params: Prom
       </div>
       <section className="panel">
         <h2>Statement · كشف الحساب</h2>
-        <EntriesTable entries={st.entries} accounts={new Map([[a.id, { name: a.name, currency: a.currency }]])} people={people} names={names} running={st.running} />
+        <EntriesTable entries={st.entries} accounts={new Map([[a.id, { name: a.name, currency: a.currency }]])} people={people} parties={parties} names={names} running={st.running} />
       </section>
       {a.active ? (
         <div className="case-cols">
-          <section className="panel"><h2>Payment / withdrawal · سند صرف</h2><NewEntryForm direction="out" accounts={accounts} people={people} defaultAccount={a.id} /></section>
-          <section className="panel"><h2>Receipt · سند قبض</h2><NewEntryForm direction="in" accounts={accounts} people={people} defaultAccount={a.id} /></section>
+          <section className="panel"><h2>Payment / withdrawal · سند صرف</h2><NewEntryForm direction="out" accounts={accounts} people={people} parties={parties} defaultAccount={a.id} /></section>
+          <section className="panel"><h2>Receipt · سند قبض</h2><NewEntryForm direction="in" accounts={accounts} people={people} parties={parties} defaultAccount={a.id} /></section>
         </div>
       ) : null}
     </>

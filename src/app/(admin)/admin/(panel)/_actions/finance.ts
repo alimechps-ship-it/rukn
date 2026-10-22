@@ -6,7 +6,7 @@ import { createSessionClient, errMessage, str } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
 import { refreshAutoRates } from "@/lib/fx";
 
-const IN_CATS = ["owner_deposit", "advance_return", "other_income"];
+const IN_CATS = ["owner_deposit", "advance_return", "other_income", "partner_refund"];
 const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "planning", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other"];
 const KINDS = ["cash", "bank", "wallet"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,8 +25,11 @@ const dateOf = (fd: FormData, k: string) => {
 };
 function party(fd: FormData) {
   const u = String(fd.get("party_user") ?? "");
-  return { party_user: UUID.test(u) ? u : null, party_name: UUID.test(u) ? null : str(fd, "party_name", 120) };
+  const pt = String(fd.get("partner_id") ?? "");
+  if (UUID.test(pt)) return { partner_id: pt, party_user: null, party_name: null };
+  return { partner_id: null, party_user: UUID.test(u) ? u : null, party_name: UUID.test(u) ? null : str(fd, "party_name", 120) };
 }
+const METHOD_BY_BOX: Record<string, string> = { cash: "cash", bank: "bank_transfer", wallet: "online" };
 const refresh = () => { revalidatePath("/admin/finance/cash"); revalidatePath("/admin/finance/people"); };
 
 export async function saveCashAccount(id: string | null, _: ActionResult, fd: FormData): Promise<ActionResult> {
@@ -62,11 +65,27 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
     const direction = fd.get("direction") === "in" ? "in" : "out";
     const account = String(fd.get("account_id") ?? "");
     const amount = amountOf(fd.get("amount"));
-    const category = String(fd.get("category") ?? "");
+    let category = String(fd.get("category") ?? "");
     if (!UUID.test(account)) return { ok: false, message: "Choose the cash box." };
     if (!(amount > 0)) return { ok: false, message: "Enter the amount." };
     if (!(direction === "in" ? IN_CATS : OUT_CATS).includes(category)) return { ok: false, message: "Choose the type." };
     const p = party(fd);
+    // Paying a lab / clinic → a partner payment (PP-) that makes the voucher and counts in their account.
+    if (p.partner_id && direction === "out") {
+      const { data: box } = await db.from("cash_accounts").select("currency,kind").eq("id", account).maybeSingle();
+      if (!box) return { ok: false, message: "Choose the cash box." };
+      const bill = String(fd.get("bill_id") ?? "");
+      const { data: pp, error: ppErr } = await db.from("partner_payments").insert({
+        partner_id: p.partner_id, bill_id: UUID.test(bill) ? bill : null, amount, currency: box.currency, paid_at: dateOf(fd, "entry_date"),
+        method: METHOD_BY_BOX[box.kind as string] ?? "other", reference: str(fd, "reference", 120), notes: str(fd, "description", 500), cash_account_id: account,
+      }).select("id,payment_no").single();
+      if (ppErr) return { ok: false, message: errMessage(ppErr) };
+      const { data: v } = await db.from("cash_entries").select("entry_no").eq("partner_payment_id", pp.id).maybeSingle();
+      refresh(); revalidatePath("/admin/partners"); revalidatePath("/admin/partner-statement");
+      return { ok: true, message: `Payment voucher ${v?.entry_no ?? ""} recorded — payment ${pp.payment_no} to the lab / clinic (in its statement).` };
+    }
+    if (p.partner_id && direction === "in") category = "partner_refund";
+    else if (category === "partner_refund") return { ok: false, message: "Choose the lab or clinic the money came from." };
     if ((category === "advance" || category === "withdrawal" || category === "advance_return") && !p.party_user && !p.party_name) {
       return { ok: false, message: "Choose or type the person who took / returned the money." };
     }
@@ -74,6 +93,7 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
       account_id: account, direction, amount, currency: "XXX", entry_date: dateOf(fd, "entry_date"), category, ...p,
       description: str(fd, "description", 500), reference: str(fd, "reference", 120),
     }).select("id,entry_no").single();
+    if (p.partner_id) { revalidatePath("/admin/partners"); revalidatePath("/admin/partner-statement"); }
     if (error) return { ok: false, message: errMessage(error) };
     refresh();
     return { ok: true, message: `${direction === "in" ? "Receipt" : "Payment"} voucher ${data.entry_no} recorded. Print it from the list below.` };
@@ -84,15 +104,20 @@ export async function updateCashEntry(id: string, _: ActionResult, fd: FormData)
   try {
     await assertStaff(can.finance);
     const db = await createSessionClient();
-    const { data: cur } = await db.from("cash_entries").select("direction,category,case_payment_id,transfer_group,voided").eq("id", id).maybeSingle();
+    const { data: cur } = await db.from("cash_entries").select("direction,category,case_payment_id,transfer_group,partner_payment_id,voided").eq("id", id).maybeSingle();
     if (!cur) return { ok: false, message: "Voucher not found." };
     if (cur.voided) return { ok: false, message: "A voided voucher cannot be changed." };
-    const linked = Boolean(cur.case_payment_id || cur.transfer_group);
+    const linked = Boolean(cur.case_payment_id || cur.transfer_group || cur.partner_payment_id);
     const p = party(fd);
-    const patch: Record<string, unknown> = { description: str(fd, "description", 500), reference: str(fd, "reference", 120), ...p };
+    if (p.partner_id && cur.direction === "out" && !cur.partner_payment_id) {
+      return { ok: false, message: "To pay a lab or clinic, void this voucher and record a new payment voucher choosing them — it then counts in their account." };
+    }
+    const patch: Record<string, unknown> = { description: str(fd, "description", 500), reference: str(fd, "reference", 120), ...(cur.partner_payment_id ? {} : p) };
     if (!linked) {
       const amount = amountOf(fd.get("amount"));
-      const category = String(fd.get("category") ?? cur.category);
+      let category = String(fd.get("category") ?? cur.category);
+      if (p.partner_id) category = "partner_refund";
+      else if (category === "partner_refund") category = "other_income";
       if (!(amount > 0)) return { ok: false, message: "Enter the amount." };
       if (!(cur.direction === "in" ? IN_CATS : OUT_CATS).includes(category)) return { ok: false, message: "Choose the type." };
       Object.assign(patch, { amount, category, entry_date: dateOf(fd, "entry_date") });

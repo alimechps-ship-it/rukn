@@ -19,13 +19,13 @@ export default async function PrintVoucher({ params }: { params: Promise<{ entry
   const { entryId } = await params;
   const user = await getStaffUser();
   if (!user) redirect(`/admin/login?next=/admin/print/cash/${entryId}`);
-  if (!can.finance(user)) redirect("/admin?denied=1");
+  if (!can.finance(user) && !can.partner(user)) redirect("/admin?denied=1"); // a partner reads only his own refund vouchers (RLS)
   const db = await createSessionClient();
   const { data } = await db.from("cash_entries").select("*").eq("id", entryId).maybeSingle();
   if (!data) notFound();
   const e = data as CashEntry;
   const [{ data: acc }, { data: kase }, { data: pair }, company] = await Promise.all([
-    db.from("cash_accounts").select("name,kind,currency").eq("id", e.account_id).single(),
+    db.from("cash_accounts").select("name,kind,currency").eq("id", e.account_id).maybeSingle(),
     e.case_id ? db.from("cases").select("code,clinic_name,doctor_name").eq("id", e.case_id).maybeSingle() : Promise.resolve({ data: null }),
     e.transfer_group ? db.from("cash_entries").select("entry_no,amount,currency,account_id").eq("transfer_group", e.transfer_group).neq("id", e.id).maybeSingle() : Promise.resolve({ data: null }),
     loadCompany(db),
@@ -39,7 +39,7 @@ export default async function PrintVoucher({ params }: { params: Promise<{ entry
   const cat = ALL_CATEGORIES[e.category];
 
   return (
-    <PrintShell back="/admin/finance/cash" company={company} docRef={e.entry_no}>
+    <PrintShell back={can.finance(user) ? "/admin/finance/cash" : "/admin/partner-statement"} company={company} docRef={e.entry_no}>
       {e.voided ? <div className="void">VOID</div> : null}
       <div className="doc-title">
         <h1>{title.en}<span className="ar">{title.ar}</span></h1>

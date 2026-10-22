@@ -1117,6 +1117,35 @@ do $$ begin
 end $$;
 reset role;
 
+-- Cash vouchers with labs / clinics
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_box uuid; v_pp uuid; v_ref uuid; begin
+  select id into v_box from public.cash_accounts where name = 'FX test USD';
+  insert into public.partner_payments (partner_id, amount, currency, cash_account_id) values ('00000000-0000-0000-0000-0000000000f2', 40, 'USD', v_box) returning id into v_pp;
+  perform t.ok((select partner_id = '00000000-0000-0000-0000-0000000000f2' and direction = 'out' from public.cash_entries where partner_payment_id = v_pp), 'a payment to a lab makes a payment voucher linked to that lab');
+  insert into public.cash_entries (account_id, direction, amount, currency, category, partner_id) values (v_box, 'in', 15, 'USD', 'partner_refund', '00000000-0000-0000-0000-0000000000f2') returning id into v_ref;
+  perform t.ok((select party_name is not null and party_user is null from public.cash_entries where id = v_ref), 'a receipt voucher from a lab carries the lab as its party');
+  begin
+    insert into public.cash_entries (account_id, direction, amount, currency, category) values (v_box, 'in', 5, 'USD', 'partner_refund');
+    perform t.ok(false, 'refund without partner must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'a refund voucher must name the lab / clinic'); end;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000e2');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.cash_entries), 'the lab sees only its own refund voucher (not the cash box movements)');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000e3');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cash_entries), 'another lab sees no vouchers');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cash_entries where partner_id is not null), 'case manager sees no partner vouchers');
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

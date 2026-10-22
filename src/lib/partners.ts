@@ -45,9 +45,10 @@ export async function partnerBalances(db: Db, partnerId?: string) {
   let bq = db.from("partner_bills").select("partner_id,currency,total,status").in("status", ["approved", "submitted"]);
   let pq = db.from("partner_payments").select("partner_id,currency,amount,voided").eq("voided", false);
   let wq = db.from("case_assignments").select("id,partner_id,status,assignment_costs(cost_amount,currency)");
-  if (partnerId) { bq = bq.eq("partner_id", partnerId); pq = pq.eq("partner_id", partnerId); wq = wq.eq("partner_id", partnerId); }
-  const [{ data: bills }, { data: pays }, { data: wos }, { data: lines }] = await Promise.all([
-    bq, pq, wq, db.from("partner_bill_lines").select("assignment_id,bill_id,partner_bills!inner(status)").not("assignment_id", "is", null),
+  let rq = db.from("cash_entries").select("partner_id,currency,amount").eq("category", "partner_refund").eq("voided", false);
+  if (partnerId) { bq = bq.eq("partner_id", partnerId); pq = pq.eq("partner_id", partnerId); wq = wq.eq("partner_id", partnerId); rq = rq.eq("partner_id", partnerId); }
+  const [{ data: bills }, { data: pays }, { data: wos }, { data: lines }, { data: refunds }] = await Promise.all([
+    bq, pq, wq, db.from("partner_bill_lines").select("assignment_id,bill_id,partner_bills!inner(status)").not("assignment_id", "is", null), rq,
   ]);
   const billed = new Set(((lines ?? []) as unknown as { assignment_id: string; partner_bills: { status: string } }[])
     .filter((l) => ["submitted", "approved"].includes(l.partner_bills.status)).map((l) => l.assignment_id));
@@ -62,6 +63,7 @@ export async function partnerBalances(db: Db, partnerId?: string) {
     else add(t.pending, b.currency as string, Number(b.total));
   }
   for (const p of pays ?? []) { const t = P(p.partner_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.owed, p.currency as string, -Number(p.amount)); }
+  for (const r of refunds ?? []) { const t = P(r.partner_id as string); add(t.paid, r.currency as string, -Number(r.amount)); add(t.owed, r.currency as string, Number(r.amount)); }
   for (const w of wos ?? []) {
     const t = P(w.partner_id as string);
     if (OPEN_WO.includes(w.status as string) && !["completed", "shipped"].includes(w.status as string)) t.openOrders++;
@@ -71,19 +73,22 @@ export async function partnerBalances(db: Db, partnerId?: string) {
   return out;
 }
 
-export interface PartnerLine { date: string; kind: "bill" | "payment"; doc: string; id: string; ref: string | null; currency: string; billed: number; paid: number; balance: number; note: string | null }
+export interface PartnerLine { date: string; kind: "bill" | "payment" | "refund"; doc: string; id: string; ref: string | null; currency: string; billed: number; paid: number; balance: number; note: string | null }
 
 /** Statement of one partner: approved bills (we owe) and payments (we paid). */
 export async function partnerStatement(db: Db, partnerId: string, from?: string, to?: string) {
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
-  const [{ data: bills }, { data: pays }] = await Promise.all([
+  const [{ data: bills }, { data: pays }, { data: refunds }] = await Promise.all([
     db.from("partner_bills").select("id,bill_no,partner_ref,bill_date,currency,total,created_at,reviewed_at").eq("partner_id", partnerId).eq("status", "approved"),
     db.from("partner_payments").select("id,payment_no,paid_at,currency,amount,reference,method,created_at").eq("partner_id", partnerId).eq("voided", false),
+    db.from("cash_entries").select("id,entry_no,entry_date,currency,amount,reference,created_at").eq("partner_id", partnerId).eq("category", "partner_refund").eq("voided", false),
   ]);
   const raw = [
     ...(bills ?? []).map((b) => ({ date: b.bill_date as string, kind: "bill" as const, doc: b.bill_no as string, id: b.id as string, ref: (b.partner_ref as string) ?? null, currency: b.currency as string, billed: Number(b.total), paid: 0, note: null, at: String(b.created_at ?? "") })),
     ...(pays ?? []).map((p) => ({ date: p.paid_at as string, kind: "payment" as const, doc: p.payment_no as string, id: p.id as string, ref: (p.reference as string) ?? null, currency: p.currency as string, billed: 0, paid: Number(p.amount), note: p.method as string, at: String(p.created_at ?? "") })),
+    // Money the partner returned to RUKN (receipt voucher): adds back to what RUKN owes / reduces an advance
+    ...(refunds ?? []).map((r) => ({ date: r.entry_date as string, kind: "refund" as const, doc: r.entry_no as string, id: r.id as string, ref: (r.reference as string) ?? null, currency: r.currency as string, billed: Number(r.amount), paid: 0, note: null, at: String(r.created_at ?? "") })),
   ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
   const opening = new Map<string, number>(); const bal = new Map<string, number>();
   const lines: PartnerLine[] = [];

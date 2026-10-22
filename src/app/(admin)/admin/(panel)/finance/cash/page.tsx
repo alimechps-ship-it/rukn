@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
-import { accountsWithBalance, CASH_KINDS, teamPeople, type CashEntry } from "@/lib/finance";
+import { accountsWithBalance, CASH_KINDS, teamPeople, voucherParties, type CashEntry } from "@/lib/finance";
 import { saveCashAccount, transferCash } from "../../_actions/finance";
 import { TransferForm } from "@/components/admin/TransferForm";
 import { fmtRate, loadRates, ratesMap, refreshAutoRates, totalIn } from "@/lib/fx";
@@ -11,16 +11,30 @@ import { EntriesTable, NewEntryForm } from "../CashForms";
 export const metadata = { title: "Cash boxes" };
 const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
 
-export default async function CashPage() {
+export default async function CashPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const sp = await searchParams;
   await requireStaff(can.finance);
   const db = await createSessionClient();
   await refreshAutoRates(db, true); // best effort: keeps automatic rates fresh (max every 12 h)
-  const [accounts, { people, names }, { data: recent }, rates] = await Promise.all([
+  const q = (sp.q ?? "").replace(/[%_,()*]/g, " ").trim().slice(0, 60);
+  const [accounts, { people, names }, parties, rates] = await Promise.all([
     accountsWithBalance(db),
     teamPeople(db),
-    db.from("cash_entries").select("*").order("created_at", { ascending: false }).limit(40),
+    voucherParties(db),
     loadRates(db),
   ]);
+  // Voucher search: number, party, description, reference, a lab / clinic or a team member by name
+  let vq = db.from("cash_entries").select("*").order("created_at", { ascending: false }).limit(q ? 200 : 40);
+  if (q) {
+    const words = q.toLowerCase();
+    const pIds = parties.partners.filter((p) => [p.name, p.contact, p.phone, p.city].some((x) => x?.toLowerCase().includes(words))).map((p) => p.id);
+    const uIds = people.filter((p) => p.name.toLowerCase().includes(words)).map((p) => p.id);
+    const ors = [`entry_no.ilike.%${q}%`, `party_name.ilike.%${q}%`, `description.ilike.%${q}%`, `reference.ilike.%${q}%`];
+    if (pIds.length) ors.push(`partner_id.in.(${pIds.join(",")})`);
+    if (uIds.length) ors.push(`party_user.in.(${uIds.join(",")})`);
+    vq = vq.or(ors.join(","));
+  }
+  const { data: recent } = await vq;
   const fx = ratesMap(rates);
   const perUsd = Object.fromEntries(fx);
   const accMap = new Map(accounts.map((a) => [a.id, { name: a.name, currency: a.currency }]));
@@ -51,13 +65,13 @@ export default async function CashPage() {
         <section className="panel">
           <h2>Payment / withdrawal · سند صرف</h2>
           <p className="small muted" style={{ marginTop: -6 }}>Money that leaves a box: a person taking custody (عهدة), an owner withdrawal, salaries, lab, shipping, expenses… Choose the person so it appears in their account.</p>
-          <NewEntryForm direction="out" accounts={accounts} people={people} />
+          <NewEntryForm direction="out" accounts={accounts} people={people} parties={parties} />
         </section>
         <div>
           <section className="panel">
             <h2>Receipt · سند قبض</h2>
             <p className="small muted" style={{ marginTop: -6 }}>Money that enters a box (case payments are added automatically when you choose a box while recording the payment on the case).</p>
-            <NewEntryForm direction="in" accounts={accounts} people={people} />
+            <NewEntryForm direction="in" accounts={accounts} people={people} parties={parties} />
           </section>
           <section className="panel">
             <h2>Transfer between boxes · تحويل</h2>
@@ -67,8 +81,13 @@ export default async function CashPage() {
       </div>
 
       <section className="panel">
-        <div className="panel-head"><h2>Latest vouchers · آخر السندات</h2><span className="small muted">Open a box above for its full statement.</span></div>
-        <EntriesTable entries={(recent ?? []) as CashEntry[]} accounts={accMap} people={people} names={names} />
+        <div className="panel-head"><h2>{q ? `Vouchers matching “${q}” · نتائج البحث (${(recent ?? []).length})` : "Latest vouchers · آخر السندات"}</h2><span className="small muted">Open a box above for its full statement.</span></div>
+        <form className="voucher-search" method="get" role="search">
+          <input type="search" name="q" defaultValue={q} placeholder="Search vouchers: lab, clinic, person, voucher no., description… · ابحث في السندات" aria-label="Search vouchers" />
+          <button className="btn secondary" type="submit">Search · بحث</button>
+          {q ? <Link className="btn secondary" href="/admin/finance/cash">Clear</Link> : null}
+        </form>
+        <EntriesTable entries={(recent ?? []) as CashEntry[]} accounts={accMap} people={people} parties={parties} names={names} />
       </section>
 
       <section className="panel">

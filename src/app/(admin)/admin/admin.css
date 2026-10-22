@@ -236,3 +236,12 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .inline-ai .flash { margin: 6px 0 0; font-size: .85rem; }
 .check-list { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fb; }
 .check-list .check { align-items: flex-start; }
+
+/* Searchable party picker (cash vouchers) */
+.party-picker .picked { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: #fafbfd; }
+.party-picker .picked .icon-btn { margin-inline-start: auto; }
+.picker-list { position: absolute; z-index: 30; inset-inline: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(16, 38, 61, .12); max-height: 320px; overflow-y: auto; }
+.picker-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.picker-list li.hi { background: #eef6f9; }
+.voucher-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+.voucher-search input[type=search] { flex: 1 1 260px; }

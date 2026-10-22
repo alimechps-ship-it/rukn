@@ -1,27 +1,18 @@
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ALL_CATEGORIES, IN_CATEGORIES, OUT_CATEGORIES, type CashAccount, type CashEntry } from "@/lib/finance";
 import { addCashEntry, updateCashEntry, voidCashEntry } from "../_actions/finance";
+import { PartyPicker, type PickerBill, type PickerPartner } from "@/components/admin/PartyPicker";
 
 export type Person = { id: string; name: string };
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function PartyFields({ people, entry, idp }: { people: Person[]; entry?: Pick<CashEntry, "party_user" | "party_name">; idp: string }) {
-  return (
-    <>
-      <div className="field"><label htmlFor={`${idp}-pu`}>Person (team member) · الشخص</label>
-        <select id={`${idp}-pu`} name="party_user" defaultValue={entry?.party_user ?? ""}>
-          <option value="">— not a team member / none —</option>
-          {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-      <div className="field"><label htmlFor={`${idp}-pn`}>…or type a name · أو اكتب الاسم</label>
-        <input id={`${idp}-pn`} type="text" name="party_name" maxLength={120} defaultValue={entry?.party_name ?? ""} placeholder="e.g. Ahmed (courier), supplier name" />
-      </div>
-    </>
-  );
+export type Parties = { partners: PickerPartner[]; bills: PickerBill[] };
+
+export function PartyFields({ people, parties, entry, idp, direction }: { people: Person[]; parties: Parties; entry?: Pick<CashEntry, "party_user" | "party_name" | "partner_id">; idp: string; direction: "in" | "out" }) {
+  return <PartyPicker idp={idp} direction={direction} partners={parties.partners} people={people} bills={parties.bills} initial={entry} />;
 }
 
-export function NewEntryForm({ direction, accounts, people, defaultAccount }: { direction: "in" | "out"; accounts: (CashAccount & { balance: number })[]; people: Person[]; defaultAccount?: string }) {
+export function NewEntryForm({ direction, accounts, people, parties, defaultAccount }: { direction: "in" | "out"; accounts: (CashAccount & { balance: number })[]; people: Person[]; parties: Parties; defaultAccount?: string }) {
   const cats = direction === "in" ? IN_CATEGORIES : OUT_CATEGORIES;
   const idp = `new-${direction}`;
   return (
@@ -39,7 +30,7 @@ export function NewEntryForm({ direction, accounts, people, defaultAccount }: { 
         </select>
       </div>
       <div className="field"><label htmlFor={`${idp}-date`}>Date · التاريخ</label><input id={`${idp}-date`} type="date" name="entry_date" defaultValue={today()} /></div>
-      <PartyFields people={people} idp={idp} />
+      <PartyFields people={people} parties={parties} idp={idp} direction={direction} />
       <div className="field full"><label htmlFor={`${idp}-desc`}>Description · البيان</label><input id={`${idp}-desc`} type="text" name="description" maxLength={500} placeholder={direction === "in" ? "e.g. capital deposit for October" : "e.g. courier advance for DHL shipments"} /></div>
       <div className="field"><label htmlFor={`${idp}-ref`}>Reference · مرجع</label><input id={`${idp}-ref`} type="text" name="reference" maxLength={120} placeholder="invoice / transfer no." /></div>
       <div className="field" style={{ alignSelf: "end" }}>
@@ -49,13 +40,13 @@ export function NewEntryForm({ direction, accounts, people, defaultAccount }: { 
   );
 }
 
-export function EditEntryForm({ entry, people }: { entry: CashEntry; people: Person[] }) {
-  const linked = Boolean(entry.case_payment_id || entry.transfer_group);
+export function EditEntryForm({ entry, people, parties }: { entry: CashEntry; people: Person[]; parties: Parties }) {
+  const linked = Boolean(entry.case_payment_id || entry.transfer_group || entry.partner_payment_id);
   const cats = entry.direction === "in" ? IN_CATEGORIES : OUT_CATEGORIES;
   const idp = `e-${entry.id.slice(0, 8)}`;
   return (
     <ActionForm action={updateCashEntry.bind(null, entry.id)} className="form-grid inline-form wide">
-      {linked ? <p className="small muted full" style={{ margin: 0 }}>Linked to a {entry.case_payment_id ? "case payment" : "transfer"}: amount, date and type follow it — void it there to cancel.</p> : (
+      {linked ? <p className="small muted full" style={{ margin: 0 }}>Linked to a {entry.case_payment_id ? "case payment" : entry.partner_payment_id ? "payment to a lab / clinic" : "transfer"}: amount, date, type and party follow it — void it there to cancel.</p> : (
         <>
           <div className="field"><label htmlFor={`${idp}-amt`}>Amount</label><input id={`${idp}-amt`} type="number" name="amount" min="0.01" step="0.01" defaultValue={Number(entry.amount)} /></div>
           <div className="field"><label htmlFor={`${idp}-date`}>Date</label><input id={`${idp}-date`} type="date" name="entry_date" defaultValue={entry.entry_date} /></div>
@@ -66,7 +57,7 @@ export function EditEntryForm({ entry, people }: { entry: CashEntry; people: Per
           </div>
         </>
       )}
-      <PartyFields people={people} entry={entry} idp={idp} />
+      {entry.partner_payment_id ? null : <PartyFields people={people} parties={parties} entry={entry} idp={idp} direction={entry.direction} />}
       <div className="field full"><label htmlFor={`${idp}-desc`}>Description</label><input id={`${idp}-desc`} type="text" name="description" maxLength={500} defaultValue={entry.description ?? ""} /></div>
       <div className="field full"><label htmlFor={`${idp}-ref`}>Reference</label><input id={`${idp}-ref`} type="text" name="reference" maxLength={120} defaultValue={entry.reference ?? ""} /></div>
       <div className="full"><SubmitButton className="btn small">Save voucher</SubmitButton></div>
@@ -77,8 +68,8 @@ export function EditEntryForm({ entry, people }: { entry: CashEntry; people: Per
 export const catLabel = (k: string) => ALL_CATEGORIES[k]?.en ?? k;
 
 /** Vouchers table with print / edit / void, optional running balance. */
-export function EntriesTable({ entries, accounts, people, names, running }: {
-  entries: CashEntry[]; accounts: Map<string, { name: string; currency: string }>; people: Person[];
+export function EntriesTable({ entries, accounts, people, parties, names, running }: {
+  entries: CashEntry[]; accounts: Map<string, { name: string; currency: string }>; people: Person[]; parties: Parties;
   names: Map<string, string>; running?: Map<string, number>;
 }) {
   const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
@@ -90,12 +81,13 @@ export function EntriesTable({ entries, accounts, people, names, running }: {
         <tbody>
           {entries.map((e) => {
             const who = e.party_user ? names.get(e.party_user) : e.party_name;
+            const partner = e.partner_id ? parties.partners.find((p) => p.id === e.partner_id) : undefined;
             return (
               <tr key={e.id} style={e.voided ? { opacity: 0.5 } : undefined}>
                 <td className="mono nowrap">{e.entry_no}{e.voided ? <div><span className="pill closed">void</span></div> : null}</td>
                 <td className="nowrap small">{new Date(e.entry_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</td>
                 <td className="small">{accounts.get(e.account_id)?.name}</td>
-                <td className="small">{catLabel(e.category)}{who ? <div><strong>{who}</strong></div> : null}</td>
+                <td className="small">{catLabel(e.category)}{who ? <div>{partner ? <a href={`/admin/partners/${partner.id}`}><strong>{who}</strong></a> : <strong>{who}</strong>}{partner ? <span className="small muted"> · {partner.kind === "lab" ? "lab · معمل" : "clinic · عيادة"}</span> : null}</div> : null}</td>
                 <td className="small">{e.description}{e.reference ? <div className="muted">Ref. {e.reference}</div> : null}{e.voided && e.void_reason ? <div className="muted">Void: {e.void_reason}</div> : null}</td>
                 <td className="num nowrap" style={{ color: "#067647" }}>{e.direction === "in" ? fmt(Number(e.amount), e.currency) : ""}</td>
                 <td className="num nowrap" style={{ color: "#b42318" }}>{e.direction === "out" ? fmt(Number(e.amount), e.currency) : ""}</td>
@@ -106,7 +98,7 @@ export function EntriesTable({ entries, accounts, people, names, running }: {
                     <>
                       <details className="inline-details" style={{ display: "inline-block" }}>
                         <summary className="btn secondary small">Edit</summary>
-                        <EditEntryForm entry={e} people={people} />
+                        <EditEntryForm entry={e} people={people} parties={parties} />
                       </details>{" "}
                       {!e.case_payment_id ? (
                         <details className="inline-details" style={{ display: "inline-block" }}>

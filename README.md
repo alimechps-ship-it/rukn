@@ -92,6 +92,11 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - Every currency is linked through USD (“1 USD = x”), so any pair (EGP↔SAR, EUR↔EGP…) is derived. Rates update automatically from a free daily service (`open.er-api.com`, at most every 12 h when finance opens the cash pages, or with *Update rates now*); env `FX_API_URL` overrides the source.
   - Finance can set a rate by hand and **lock** it (the automatic update then leaves it alone) or return it to automatic. Every change is kept in the history (who, when, old → new).
   - **Transfer between boxes** in different currencies proposes the automatic rate and the received amount; the user can change the rate or type the received amount (the other follows). The rate used and whether it was automatic or manual are stored on both vouchers and printed in their text. Cash page shows the total of all boxes converted to USD and EGP.
+- **Cash vouchers with labs & clinics** (migration `20261022001400_cash_partners.sql`):
+  - Payment and receipt vouchers have one searchable “Paid to / received from” field: type part of a lab or clinic name, contact, phone, city, the type (lab / معمل / clinic / عيادة) or a team member / agent; or keep a free-typed name.
+  - A **payment voucher to a lab / clinic** is recorded as a partner payment `PP-` (optionally for one of its approved bills, which fills the amount), so it reduces what RUKN owes them and appears in their statement and portal.
+  - A **receipt voucher from a lab / clinic** (money returned) uses the type “Returned by a lab / clinic”, counts in their balance and statement, and the partner can see / print it. Vouchers with partners do not appear in person accounts.
+  - **Voucher search** on the cash page: voucher number, party, lab / clinic, description or reference.
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -190,8 +195,9 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (260 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (266 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
+- **Cash vouchers with labs & clinics** (7 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.
 - **Exchange rates** (14 checks: automatic update, locked manual rate, transfers with automatic / edited rate / typed amount, access): see `tests/e2e/fx_flow.py` (run the app with `FX_API_URL=http://localhost:54400/fx` and the mock server).
 - **Case manager / finance separation** (23 checks: menus and pages denied to the case manager, dispatch order → finance queue → priced invoice, no amounts visible to operations): see `tests/e2e/dispatch_flow.py`. The money e2e tests sign in with `FINANCE_EMAIL` / `FINANCE_PASSWORD`.
 - **Agents/case workflow** (28 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.

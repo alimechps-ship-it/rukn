@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
-import { accountsWithBalance, ALL_CATEGORIES, loadPeople, netMap, teamPeople } from "@/lib/finance";
+import { accountsWithBalance, ALL_CATEGORIES, loadPeople, netMap, teamPeople, voucherParties } from "@/lib/finance";
 import { EntriesTable } from "../CashForms";
 
 export const metadata = { title: "Person accounts" };
@@ -12,7 +12,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   await requireStaff(can.finance);
   const db = await createSessionClient();
-  const [{ people: list }, { people, names }, accounts] = await Promise.all([loadPeople(db, sp.from, sp.to), teamPeople(db), accountsWithBalance(db)]);
+  const [{ people: list }, { people, names }, accounts, parties] = await Promise.all([loadPeople(db, sp.from, sp.to), teamPeople(db), accountsWithBalance(db), voucherParties(db)]);
   const label = (p: { user: string | null; name: string | null }) => (p.user ? names.get(p.user) ?? "Team member" : p.name ?? "—");
   const sel = sp.p ? list.find((x) => x.key === sp.p) : undefined;
   const base = new URLSearchParams(Object.entries({ from: sp.from ?? "", to: sp.to ?? "" }).filter(([, v]) => v));
@@ -60,7 +60,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
           <div className="stats" style={{ marginTop: 0 }}>
             {[...sel.byCategory.entries()].map(([cat, m]) => <div key={cat} className="stat"><div className="k">{ALL_CATEGORIES[cat]?.en} · {ALL_CATEGORIES[cat]?.ar}</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{mm(m)}</div></div>)}
           </div>
-          <EntriesTable entries={sel.entries} accounts={accMap} people={people} names={names} />
+          <EntriesTable entries={sel.entries} accounts={accMap} people={people} parties={parties} names={names} />
         </section>
       ) : null}
     </>

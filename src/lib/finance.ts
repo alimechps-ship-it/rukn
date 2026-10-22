@@ -196,7 +196,7 @@ export async function loadStatement(db: Db, accountId: string, from?: string, to
 
 /** Person accounts: what each person took from the boxes and what they returned. */
 export async function loadPeople(db: Db, from?: string, to?: string) {
-  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").order("entry_date").limit(10000);
+  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").order("entry_date").order("created_at").limit(10000);
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
   const rows = ((data ?? []) as CashEntry[]).filter((e) => (!f || e.entry_date >= f) && (!t || e.entry_date <= t));

@@ -24,8 +24,8 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
   const ids = [...caseMap.keys()];
   if (!ids.length) return { totals: [] as AgentTotals[], lines: [] as StatementLine[], opening: new Map<string, number>(), from, to };
   const [{ data: invs }, { data: pays }, { data: claims }] = await Promise.all([
-    db.from("case_invoices").select("id,invoice_no,case_id,issue_date,currency,total,revision").eq("status", "issued").in("case_id", ids),
-    db.from("case_payments").select("id,receipt_no,case_id,paid_at,currency,amount,method,voided,reference").eq("voided", false).in("case_id", ids),
+    db.from("case_invoices").select("id,invoice_no,case_id,issue_date,currency,total,revision,issued_at,created_at").eq("status", "issued").in("case_id", ids),
+    db.from("case_payments").select("id,receipt_no,case_id,paid_at,currency,amount,method,voided,reference,created_at").eq("voided", false).in("case_id", ids),
     db.from("case_payment_claims").select("case_id,currency,amount").eq("status", "pending").in("case_id", ids),
   ]);
 
@@ -43,24 +43,26 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
   const lines: StatementLine[] = [];
   const opening = new Map<string, number>();
   if (opts.agent) {
-    const raw: Omit<StatementLine, "balance">[] = [
+    const raw: (Omit<StatementLine, "balance"> & { at: string })[] = [
       ...(invs ?? []).map((i) => {
         const c = caseMap.get(i.case_id as string)!;
         return { date: i.issue_date as string, kind: "invoice" as const, doc: i.invoice_no as string, doc_id: i.id as string, case_id: c.id as string, code: c.code as string, clinic: c.clinic_name as string,
-          currency: i.currency as string, debit: Number(i.total), credit: 0, note: Number(i.revision) ? `rev. ${i.revision}` : null };
+          currency: i.currency as string, debit: Number(i.total), credit: 0, note: Number(i.revision) ? `rev. ${i.revision}` : null,
+          at: String((i as Record<string, unknown>).issued_at ?? i.created_at ?? "") };
       }),
       ...(pays ?? []).map((p) => {
         const c = caseMap.get(p.case_id as string)!;
         return { date: p.paid_at as string, kind: "payment" as const, doc: p.receipt_no as string, doc_id: p.id as string, case_id: c.id as string, code: c.code as string, clinic: c.clinic_name as string,
-          currency: p.currency as string, debit: 0, credit: Number(p.amount), note: (p.reference as string | null) ?? null };
+          currency: p.currency as string, debit: 0, credit: Number(p.amount), note: (p.reference as string | null) ?? null, at: String(p.created_at ?? "") };
       }),
-    ].sort((a, b) => (a.date === b.date ? (a.kind === "invoice" ? -1 : 1) : a.date < b.date ? -1 : 1));
+    ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
     const bal = new Map<string, number>();
     for (const l of raw) {
       if (from && l.date < from) { add(opening, l.currency, l.debit - l.credit); add(bal, l.currency, l.debit - l.credit); continue; }
       if (to && l.date > to) continue;
       add(bal, l.currency, l.debit - l.credit);
-      lines.push({ ...l, balance: bal.get(l.currency) ?? 0 });
+      const { at: _at, ...line } = l;
+      lines.push({ ...line, balance: bal.get(l.currency) ?? 0 });
     }
   }
   return { totals: [...totals.values()], lines, opening, from, to };

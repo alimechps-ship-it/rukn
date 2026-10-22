@@ -78,13 +78,13 @@ export async function partnerStatement(db: Db, partnerId: string, from?: string,
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
   const [{ data: bills }, { data: pays }] = await Promise.all([
-    db.from("partner_bills").select("id,bill_no,partner_ref,bill_date,currency,total").eq("partner_id", partnerId).eq("status", "approved"),
-    db.from("partner_payments").select("id,payment_no,paid_at,currency,amount,reference,method").eq("partner_id", partnerId).eq("voided", false),
+    db.from("partner_bills").select("id,bill_no,partner_ref,bill_date,currency,total,created_at,reviewed_at").eq("partner_id", partnerId).eq("status", "approved"),
+    db.from("partner_payments").select("id,payment_no,paid_at,currency,amount,reference,method,created_at").eq("partner_id", partnerId).eq("voided", false),
   ]);
   const raw = [
-    ...(bills ?? []).map((b) => ({ date: b.bill_date as string, kind: "bill" as const, doc: b.bill_no as string, id: b.id as string, ref: (b.partner_ref as string) ?? null, currency: b.currency as string, billed: Number(b.total), paid: 0, note: null })),
-    ...(pays ?? []).map((p) => ({ date: p.paid_at as string, kind: "payment" as const, doc: p.payment_no as string, id: p.id as string, ref: (p.reference as string) ?? null, currency: p.currency as string, billed: 0, paid: Number(p.amount), note: p.method as string })),
-  ].sort((a, b) => (a.date === b.date ? (a.kind === "bill" ? -1 : 1) : a.date < b.date ? -1 : 1));
+    ...(bills ?? []).map((b) => ({ date: b.bill_date as string, kind: "bill" as const, doc: b.bill_no as string, id: b.id as string, ref: (b.partner_ref as string) ?? null, currency: b.currency as string, billed: Number(b.total), paid: 0, note: null, at: String(b.created_at ?? "") })),
+    ...(pays ?? []).map((p) => ({ date: p.paid_at as string, kind: "payment" as const, doc: p.payment_no as string, id: p.id as string, ref: (p.reference as string) ?? null, currency: p.currency as string, billed: 0, paid: Number(p.amount), note: p.method as string, at: String(p.created_at ?? "") })),
+  ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
   const opening = new Map<string, number>(); const bal = new Map<string, number>();
   const lines: PartnerLine[] = [];
   const totals = { billed: new Map<string, number>(), paid: new Map<string, number>() };
@@ -94,7 +94,8 @@ export async function partnerStatement(db: Db, partnerId: string, from?: string,
     add(bal, l.currency, l.billed - l.paid);
     if (l.billed) add(totals.billed, l.currency, l.billed);
     if (l.paid) add(totals.paid, l.currency, l.paid);
-    lines.push({ ...l, balance: bal.get(l.currency) ?? 0 });
+    const { at: _at, ...line } = l;
+    lines.push({ ...line, balance: bal.get(l.currency) ?? 0 });
   }
   return { lines, opening, closing: bal, totals, from: f, to: t };
 }

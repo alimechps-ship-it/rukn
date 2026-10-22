@@ -1,7 +1,7 @@
 import "server-only";
 import type { Db } from "./admin";
 import { withQuote } from "./cases";
-import { docCredits } from "./adjustments";
+import { docCredits } from "./journal";
 
 export const CASH_KINDS: Record<string, { en: string; ar: string }> = {
   cash: { en: "Cash box", ar: "صندوق نقدي" },

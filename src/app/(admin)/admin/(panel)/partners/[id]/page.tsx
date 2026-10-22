@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { can, requireStaff } from "@/lib/auth";
-import { docCredits } from "@/lib/adjustments";
+import { docCredits } from "@/lib/journal";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
 import { costsFor, mm, PARTNER_KINDS, partnerBalances, type Partner, type WorkOrder } from "@/lib/partners";
@@ -50,7 +50,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
           <h1>{partner.name} {partner.active ? null : <span className="pill archived">inactive</span>}</h1>
           <div className="sub">{k?.en} · {k?.ar}{partner.contact_name ? ` · ${partner.contact_name}` : ""}{partner.phone ? ` · ${partner.phone}` : ""}</div>
         </div>
-        {fin ? <div className="btn-row"><Link className="btn secondary" href={`/admin/finance/adjustments?partner=${id}`}>± Discount / adjustment · تسوية</Link><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div> : null}
+        {fin ? <div className="btn-row"><Link className="btn secondary" href={`/admin/finance/journal?account=partner:${id}`}>± Journal entry · قيد</Link><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div> : null}
       </div>
       {fin ? <div className="stats">
         <div className="stat"><div className="k">Open work orders</div><div className="v">{b?.openOrders ?? 0}</div></div>

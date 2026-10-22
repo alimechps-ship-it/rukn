@@ -245,3 +245,13 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .picker-list li.hi { background: #eef6f9; }
 .voucher-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
 .voucher-search input[type=search] { flex: 1 1 260px; }
+
+/* Journal entry form */
+.jv-templates { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.jv-sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: start; margin: 10px 0; }
+.jv-side { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: #fafbfd; }
+.jv-side h3 { margin: 0 0 8px; font-size: .95rem; }
+.jv-side.dr h3 { color: #b42318; }
+.jv-side.cr h3 { color: #067647; }
+.jv-swap { align-self: center; }
+@media (max-width: 860px) { .jv-sides { grid-template-columns: 1fr; } .jv-swap { justify-self: center; } }

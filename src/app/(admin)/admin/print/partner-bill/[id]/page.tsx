@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { can, getStaffUser } from "@/lib/auth";
-import { docCredits } from "@/lib/adjustments";
+import { docCredits } from "@/lib/journal";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { BILL_STATUS } from "@/lib/partners";
@@ -60,7 +60,7 @@ export default async function PrintPartnerBill({ params }: { params: Promise<{ i
         <div className="box">
           <dl className="kv2" style={{ gridTemplateColumns: "1fr auto", fontSize: "10.5pt" }}>
             <dt>Total · الإجمالي</dt><dd style={{ textAlign: "end" }}>{fmtMoney(b.total, b.currency)}</dd>
-            {b.status === "approved" ? <><dt>Paid & adjusted · المدفوع والتسويات</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, b.currency)}</dd><dt><strong>Balance · المتبقي</strong></dt><dd style={{ textAlign: "end" }}>{fmtMoney(Number(b.total) - paid, b.currency)}</dd></> : null}
+            {b.status === "approved" ? <><dt>Paid & journal · المدفوع والقيود</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, b.currency)}</dd><dt><strong>Balance · المتبقي</strong></dt><dd style={{ textAlign: "end" }}>{fmtMoney(Number(b.total) - paid, b.currency)}</dd></> : null}
           </dl>
           {(pays ?? []).length ? <div className="note">Payments: {(pays ?? []).map((p) => `${p.payment_no} (${fmtDay(p.paid_at)}, ${fmtMoney(p.amount, p.currency)})`).join(" · ")}</div> : null}
         </div>

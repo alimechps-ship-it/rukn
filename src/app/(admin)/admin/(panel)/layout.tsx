@@ -88,7 +88,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
         { href: "/admin/finance/notices", label: "Payment notices · إشعارات الدفع", badge: pendingNotices ?? 0 },
         { href: "/admin/statement", label: "Agent statements · كشوف المناديب" },
         { href: "/admin/finance/receivables", label: "Receivables · المستحقات" },
-        { href: "/admin/finance/adjustments", label: "Adjustments · التسويات" },
+        { href: "/admin/finance/journal", label: "Journal entries · القيود" },
         { href: "/admin/finance/cash", label: "Cash boxes · الصناديق" },
         { href: "/admin/finance/rates", label: "Exchange rates · أسعار الصرف" },
         { href: "/admin/finance/people", label: "Person accounts · العهد" },

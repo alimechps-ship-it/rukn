@@ -1,5 +1,5 @@
 import { can, requireStaff } from "@/lib/auth";
-import { docCredits } from "@/lib/adjustments";
+import { docCredits } from "@/lib/journal";
 import { createSessionClient } from "@/lib/admin";
 import { costsFor, type WorkOrder } from "@/lib/partners";
 import { BillsTable, NewBillForm, type Bill } from "../partners/PartnerParts";

@@ -7,7 +7,7 @@ import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { ItemsEditor } from "@/components/admin/ItemsEditor";
 import { Select, Text, TextArea } from "@/components/admin/fields";
 import { can, requireStaff } from "@/lib/auth";
-import { docCredits } from "@/lib/adjustments";
+import { docCredits } from "@/lib/journal";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { peopleWithRole, profileMap, serviceOptions } from "@/lib/case-data";
 import {

@@ -1146,70 +1146,82 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.cash_entries where partner_id is not null), 'case manager sees no partner vouchers');
 reset role;
 
--- Account adjustments: discounts, extra charges, currency differences, offsets
+-- Simple journal entries (debit account / credit account, with currencies)
 select t.login('00000000-0000-0000-0000-0000000000d1');
 set role authenticated;
-do $$ declare v_inv record; v_id uuid; g uuid; n int; begin
+do $$ declare v_inv record; v_id uuid; v_disc uuid; v_earn uuid; v_fx uuid; n int; begin
+  select id into v_disc from public.ledger_accounts where code = '5100';
+  select id into v_earn from public.ledger_accounts where code = '4200';
+  select id into v_fx from public.ledger_accounts where code = '6100';
   select i.id, i.currency into v_inv from public.case_invoices i join public.cases c on c.id = i.case_id
     where i.status = 'issued' and c.agent_id = '00000000-0000-0000-0000-0000000000a1' limit 1;
-  insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency, invoice_id)
-  values ('agent', '00000000-0000-0000-0000-0000000000a1', 'discount_allowed', 'decrease', 50, v_inv.currency, v_inv.id) returning id into v_id;
-  perform t.ok((select adj_no like 'AJ-%' and case_id is not null from public.account_adjustments where id = v_id), 'discount allowed to an agent is numbered AJ- and linked to the invoice''s case');
+  -- Dr Discount allowed / Cr Agent (on his invoice)
+  insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency, cr_invoice_id)
+  values ('ledger', v_disc, 50, v_inv.currency, 'agent', '00000000-0000-0000-0000-0000000000a1', v_inv.currency, v_inv.id) returning id into v_id;
+  perform t.ok((select entry_no like 'JV-%' and cr_amount = 50 and fx_rate is null from public.journal_entries where id = v_id), 'entry is numbered JV- and the credit equals the debit in the same currency');
   begin
-    insert into public.account_adjustments (party_type, partner_id, kind, effect, amount, currency) values ('partner', '00000000-0000-0000-0000-0000000000f2', 'discount_allowed', 'decrease', 5, 'USD');
-    perform t.ok(false, 'discount allowed to partner must fail');
-  exception when invalid_parameter_value then perform t.ok(true, 'a discount allowed is only for agents'); end;
+    insert into public.journal_entries (dr_type, dr_agent_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency)
+    values ('agent', '00000000-0000-0000-0000-0000000000a1', 5, 'USD', 'agent', '00000000-0000-0000-0000-0000000000a1', 'USD');
+    perform t.ok(false, 'same account must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'debit and credit accounts must differ'); end;
   begin
-    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency, invoice_id)
-    values ('agent', '00000000-0000-0000-0000-0000000000a1', 'other', 'decrease', 5, case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, v_inv.id);
-    perform t.ok(false, 'currency mismatch must fail');
-  exception when invalid_parameter_value then perform t.ok(true, 'an adjustment on an invoice uses the invoice currency'); end;
-  insert into public.account_adjustments (party_type, partner_id, kind, effect, amount, currency) values ('partner', '00000000-0000-0000-0000-0000000000f2', 'discount_earned', 'decrease', 10, 'USD');
-  perform t.ok(true, 'discount earned from a lab is recorded');
+    insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency, cr_invoice_id)
+    values ('ledger', v_disc, 5, case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, 'agent', '00000000-0000-0000-0000-0000000000a1', case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, v_inv.id);
+    perform t.ok(false, 'invoice currency mismatch must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'a side on an invoice is in the invoice currency'); end;
   begin
-    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'extra_charge', 'decrease', 5, 'USD');
-    perform t.ok(false, 'extra charge must increase');
-  exception when invalid_parameter_value then perform t.ok(true, 'an extra charge always increases the balance'); end;
-  begin
-    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'offset', 'decrease', 5, 'USD');
-    perform t.ok(false, 'single offset must fail');
-  exception when invalid_parameter_value then perform t.ok(true, 'offsets are only made in pairs'); end;
-  g := public.make_offset('agent', '00000000-0000-0000-0000-0000000000a1', 'partner', '00000000-0000-0000-0000-0000000000f2', 'net', 20, 'USD');
-  perform t.ok((select count(*) = 2 and bool_and(effect = 'decrease') from public.account_adjustments where offset_group = g), 'set-off: both balances decrease by the same amount');
-  g := public.make_offset('agent', '00000000-0000-0000-0000-0000000000a1', 'agent', '00000000-0000-0000-0000-0000000000a2', 'move', 30, 'USD');
-  perform t.ok((select count(*) filter (where effect = 'decrease' and agent_id = '00000000-0000-0000-0000-0000000000a1') = 1
-                   and count(*) filter (where effect = 'increase' and agent_id = '00000000-0000-0000-0000-0000000000a2') = 1 from public.account_adjustments where offset_group = g), 'moving a balance: A decreases, B increases');
+    insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_partner_id, cr_currency, cr_invoice_id)
+    values ('ledger', v_disc, 5, 'USD', 'partner', '00000000-0000-0000-0000-0000000000f2', 'USD', v_inv.id);
+    perform t.ok(false, 'invoice on partner side must fail');
+  exception when check_violation then perform t.ok(true, 'an invoice can only be linked on an agent side'); end;
+  -- Dr Lab / Cr Discount earned
+  insert into public.journal_entries (dr_type, dr_partner_id, dr_amount, dr_currency, cr_type, cr_ledger_id, cr_currency)
+  values ('partner', '00000000-0000-0000-0000-0000000000f2', 10, 'USD', 'ledger', v_earn, 'USD');
+  perform t.ok(true, 'discount earned from a lab is recorded (Dr lab / Cr discount earned)');
+  -- Offset across currencies: Dr Lab (USD) / Cr Agent (EGP) with the automatic rate
   update public.exchange_rates set per_usd = 50 where currency = 'EGP';
-  g := public.make_offset('partner', '00000000-0000-0000-0000-0000000000f2', 'partner', '00000000-0000-0000-0000-0000000000f3', 'move', 10, 'USD', 'EGP');
-  perform t.ok((select amount = 500 and fx_rate = 50 from public.account_adjustments where offset_group = g and currency = 'EGP'), 'offset across currencies uses the exchange rate (10 USD = 500 EGP)');
-  update public.account_adjustments set voided = true, void_reason = 'test' where offset_group = g and currency = 'USD';
-  perform t.ok((select bool_and(voided) from public.account_adjustments where offset_group = g), 'voiding one side voids the whole offset');
+  insert into public.journal_entries (dr_type, dr_partner_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency)
+  values ('partner', '00000000-0000-0000-0000-0000000000f2', 20, 'USD', 'agent', '00000000-0000-0000-0000-0000000000a1', 'EGP') returning id into v_id;
+  perform t.ok((select cr_amount = 1000 and fx_rate = 50 and fx_source = 'auto' from public.journal_entries where id = v_id), 'two currencies: credit follows the automatic rate (20 USD = 1000 EGP)');
+  insert into public.journal_entries (dr_type, dr_agent_id, dr_amount, dr_currency, cr_type, cr_ledger_id, cr_currency, fx_rate)
+  values ('agent', '00000000-0000-0000-0000-0000000000a2', 10, 'USD', 'ledger', v_fx, 'EGP', 51) returning id into v_id;
+  perform t.ok((select cr_amount = 510 and fx_source = 'manual' from public.journal_entries where id = v_id), 'an edited rate is used and marked manual (10 × 51)');
+  insert into public.journal_entries (dr_type, dr_agent_id, dr_amount, dr_currency, cr_type, cr_ledger_id, cr_currency, cr_amount)
+  values ('agent', '00000000-0000-0000-0000-0000000000a2', 10, 'USD', 'ledger', v_fx, 'EGP', 495) returning id into v_id;
+  perform t.ok((select fx_rate = 49.5 and fx_source = 'manual' from public.journal_entries where id = v_id), 'or the credit amount is typed and the rate derived (49.5)');
   begin
-    update public.account_adjustments set amount = 1 where id = v_id;
+    update public.journal_entries set dr_amount = 1 where id = v_id;
     perform t.ok(false, 'edit must fail');
-  exception when insufficient_privilege then perform t.ok(true, 'adjustments cannot be edited (void and redo)'); end;
+  exception when insufficient_privilege then perform t.ok(true, 'entries cannot be edited (void and redo)'); end;
+  update public.journal_entries set voided = true, void_reason = 'test' where id = v_id;
+  perform t.ok((select voided from public.journal_entries where id = v_id), 'an entry can be voided with a reason');
   begin
-    delete from public.account_adjustments where id = v_id;
+    delete from public.journal_entries where id = v_id;
     get diagnostics n = row_count;
-    perform t.ok(n = 0, 'adjustments are never deleted');
-  exception when insufficient_privilege then perform t.ok(true, 'adjustments are never deleted'); end;
+    perform t.ok(n = 0, 'entries are never deleted');
+  exception when insufficient_privilege then perform t.ok(true, 'entries are never deleted'); end;
 end $$;
 reset role;
 select t.login('00000000-0000-0000-0000-0000000000a1');
 set role authenticated;
-select t.ok((select count(*) >= 3 and bool_and(agent_id = '00000000-0000-0000-0000-0000000000a1') from public.account_adjustments), 'the agent sees his own adjustments only');
+select t.ok((select count(*) >= 2 and bool_and('00000000-0000-0000-0000-0000000000a1' in (coalesce(dr_agent_id, '00000000-0000-0000-0000-000000000000'), coalesce(cr_agent_id, '00000000-0000-0000-0000-000000000000'))) from public.journal_entries), 'the agent sees only entries on his account');
 do $$ begin
-  insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'discount_allowed', 'decrease', 999, 'USD');
+  insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency)
+  values ('ledger', (select id from public.ledger_accounts where code = '5100'), 999, 'USD', 'agent', '00000000-0000-0000-0000-0000000000a1', 'USD');
   perform t.ok(false, 'agent must not create');
-exception when insufficient_privilege then perform t.ok(true, 'agents cannot give themselves a discount'); end $$;
+exception when insufficient_privilege then perform t.ok(true, 'agents cannot make journal entries'); end $$;
 reset role;
 select t.login('00000000-0000-0000-0000-0000000000e2');
 set role authenticated;
-select t.ok((select count(*) >= 2 and bool_and(partner_id = '00000000-0000-0000-0000-0000000000f2') from public.account_adjustments), 'the lab sees its own adjustments only');
+select t.ok((select count(*) = 2 from public.journal_entries), 'the lab sees only its own entries');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000e3');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.journal_entries), 'another lab sees none');
 reset role;
 select t.login('00000000-0000-0000-0000-0000000000c1');
 set role authenticated;
-select t.ok((select count(*) = 0 from public.account_adjustments), 'case manager sees no adjustments');
+select t.ok((select count(*) = 0 from public.journal_entries), 'case manager sees no journal entries');
 reset role;
 
 -- Last super administrator protection (deferred trigger → check immediately)

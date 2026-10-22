@@ -38,7 +38,7 @@ export default async function PrintPartnerStatement({ searchParams }: { searchPa
           {st.lines.map((l) => (
             <tr key={`${l.kind}-${l.id}`}>
               <td style={{ whiteSpace: "nowrap" }}>{fmtDay(l.date)}</td>
-              <td style={{ fontFamily: "ui-monospace, monospace" }}>{l.doc}<div style={{ fontFamily: "inherit", fontSize: "8pt", color: "#526173" }}>{l.kind === "bill" ? "Bill · فاتورة" : l.kind === "refund" ? "Returned · مرتجع" : l.kind === "adjustment" ? (l.note ?? "Adjustment · تسوية") : "Payment · سداد"}</div></td>
+              <td style={{ fontFamily: "ui-monospace, monospace" }}>{l.doc}<div style={{ fontFamily: "inherit", fontSize: "8pt", color: "#526173" }}>{l.kind === "bill" ? "Bill · فاتورة" : l.kind === "refund" ? "Returned · مرتجع" : l.kind === "journal" ? (l.note ?? "Journal · قيد") : "Payment · سداد"}</div></td>
               <td>{l.ref ?? ""}</td>
               <td className="num">{l.billed ? fmtMoney(l.billed, l.currency) : ""}</td>
               <td className="num">{l.paid ? fmtMoney(l.paid, l.currency) : ""}</td>

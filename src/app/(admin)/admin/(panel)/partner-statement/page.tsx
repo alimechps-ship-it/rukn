@@ -56,7 +56,7 @@ export default async function PartnerStatementPage({ searchParams }: { searchPar
               {st.lines.map((l) => (
                 <tr key={`${l.kind}-${l.id}`}>
                   <td className="small nowrap">{fmtDay(l.date)}</td>
-                  <td className="mono nowrap"><a href={l.kind === "bill" ? `/admin/print/partner-bill/${l.id}` : l.kind === "refund" ? `/admin/print/cash/${l.id}` : l.kind === "adjustment" ? `/admin/print/adjustment/${l.id}` : `/admin/print/partner-payment/${l.id}`} target="_blank" rel="noopener">{l.doc}</a><div className="small muted">{l.kind === "bill" ? "Bill" : l.kind === "refund" ? "Returned to RUKN · مرتجع" : l.kind === "adjustment" ? (l.note ?? "Adjustment") : `Payment · ${PAYMENT_METHODS[l.note ?? ""]?.en ?? ""}`}</div></td>
+                  <td className="mono nowrap"><a href={l.kind === "bill" ? `/admin/print/partner-bill/${l.id}` : l.kind === "refund" ? `/admin/print/cash/${l.id}` : l.kind === "journal" ? `/admin/print/journal/${l.id}` : `/admin/print/partner-payment/${l.id}`} target="_blank" rel="noopener">{l.doc}</a><div className="small muted">{l.kind === "bill" ? "Bill" : l.kind === "refund" ? "Returned to RUKN · مرتجع" : l.kind === "journal" ? (l.note ?? "Journal entry") : `Payment · ${PAYMENT_METHODS[l.note ?? ""]?.en ?? ""}`}</div></td>
                   <td className="small">{l.ref ?? ""}</td>
                   <td className="num nowrap">{l.billed ? fmtMoney(l.billed, l.currency) : ""}</td>
                   <td className="num nowrap" style={{ color: "#067647" }}>{l.paid ? fmtMoney(l.paid, l.currency) : ""}</td>

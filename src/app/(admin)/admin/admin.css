@@ -167,3 +167,6 @@ details > summary { cursor: pointer; }
 .inline-form input { flex: 1; min-width: 0; }
 .flash.ok { user-select: text; }
 .form-grid > .flash { grid-column: 1 / -1; }
+tr.row-link { position: relative; cursor: pointer; }
+tr.row-link:hover td { background: #f2fafc; }
+tr.row-link a.stretched::after { content: ""; position: absolute; inset: 0; z-index: 1; }

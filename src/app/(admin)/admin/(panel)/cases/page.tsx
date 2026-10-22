@@ -58,8 +58,8 @@ export default async function Cases({ searchParams }: { searchParams: Promise<F>
             <tbody>
               {rows.length === 0 ? <tr><td colSpan={7} className="empty">No cases yet. <Link href="/admin/cases/new">Create the first case →</Link></td></tr> : null}
               {rows.map((c) => (
-                <tr key={c.id}>
-                  <td><Link href={`/admin/cases/${c.id}`} className="mono"><strong>{c.code}</strong></Link>{c.priority === "urgent" ? <div><span className="pill changes">urgent</span></div> : null}</td>
+                <tr key={c.id} className="row-link">
+                  <td><Link href={`/admin/cases/${c.id}`} className="mono stretched" title="Open case · فتح الحالة"><strong>{c.code}</strong></Link>{c.priority === "urgent" ? <div><span className="pill changes">urgent</span></div> : null}</td>
                   <td>{c.clinic_name}<div className="small muted">{c.doctor_name} · {countryName(c.country_code)}</div></td>
                   <td className="mono">{c.patient_ref}</td>
                   <td>{c.service_label ?? "—"}</td>

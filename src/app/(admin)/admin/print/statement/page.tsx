@@ -44,7 +44,7 @@ export default async function PrintStatement({ searchParams }: { searchParams: P
           {st.lines.map((l) => (
             <tr key={`${l.kind}-${l.doc_id}`}>
               <td style={{ whiteSpace: "nowrap" }}>{fmtDay(l.date)}</td>
-              <td style={{ fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap" }}>{l.doc}<div style={{ fontFamily: "inherit", fontSize: "8pt", color: "#526173" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
+              <td style={{ fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap" }}>{l.doc}<div style={{ fontFamily: "inherit", fontSize: "8pt", color: "#526173" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : l.kind === "adjustment" ? "Adjustment · تسوية" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
               <td>{l.code}<div style={{ fontSize: "8.5pt", color: "#526173" }}>{l.clinic}</div></td>
               <td className="num">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
               <td className="num">{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>

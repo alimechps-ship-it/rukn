@@ -1,5 +1,6 @@
 import "server-only";
 import type { Db } from "./admin";
+import { ADJ_KINDS, signed, type Adjustment } from "./adjustments";
 
 export const PARTNER_KINDS: Record<string, { en: string; ar: string; work: "planning" | "production" }> = {
   planner: { en: "Treatment planner", ar: "مخطط علاجي (طبيب / عيادة)", work: "planning" },
@@ -46,15 +47,16 @@ export async function partnerBalances(db: Db, partnerId?: string) {
   let pq = db.from("partner_payments").select("partner_id,currency,amount,voided").eq("voided", false);
   let wq = db.from("case_assignments").select("id,partner_id,status,assignment_costs(cost_amount,currency)");
   let rq = db.from("cash_entries").select("partner_id,currency,amount").eq("category", "partner_refund").eq("voided", false);
-  if (partnerId) { bq = bq.eq("partner_id", partnerId); pq = pq.eq("partner_id", partnerId); wq = wq.eq("partner_id", partnerId); rq = rq.eq("partner_id", partnerId); }
-  const [{ data: bills }, { data: pays }, { data: wos }, { data: lines }, { data: refunds }] = await Promise.all([
-    bq, pq, wq, db.from("partner_bill_lines").select("assignment_id,bill_id,partner_bills!inner(status)").not("assignment_id", "is", null), rq,
+  let aq = db.from("account_adjustments").select("partner_id,currency,amount,effect").eq("party_type", "partner").eq("voided", false);
+  if (partnerId) { bq = bq.eq("partner_id", partnerId); pq = pq.eq("partner_id", partnerId); wq = wq.eq("partner_id", partnerId); rq = rq.eq("partner_id", partnerId); aq = aq.eq("partner_id", partnerId); }
+  const [{ data: bills }, { data: pays }, { data: wos }, { data: lines }, { data: refunds }, { data: adjs }] = await Promise.all([
+    bq, pq, wq, db.from("partner_bill_lines").select("assignment_id,bill_id,partner_bills!inner(status)").not("assignment_id", "is", null), rq, aq,
   ]);
   const billed = new Set(((lines ?? []) as unknown as { assignment_id: string; partner_bills: { status: string } }[])
     .filter((l) => ["submitted", "approved"].includes(l.partner_bills.status)).map((l) => l.assignment_id));
-  const out = new Map<string, { approved: Map<string, number>; pending: Map<string, number>; paid: Map<string, number>; owed: Map<string, number>; unbilled: Map<string, number>; openOrders: number }>();
+  const out = new Map<string, { approved: Map<string, number>; pending: Map<string, number>; paid: Map<string, number>; adjusted: Map<string, number>; owed: Map<string, number>; unbilled: Map<string, number>; openOrders: number }>();
   const P = (id: string) => {
-    if (!out.has(id)) out.set(id, { approved: new Map(), pending: new Map(), paid: new Map(), owed: new Map(), unbilled: new Map(), openOrders: 0 });
+    if (!out.has(id)) out.set(id, { approved: new Map(), pending: new Map(), paid: new Map(), adjusted: new Map(), owed: new Map(), unbilled: new Map(), openOrders: 0 });
     return out.get(id)!;
   };
   for (const b of bills ?? []) {
@@ -63,6 +65,7 @@ export async function partnerBalances(db: Db, partnerId?: string) {
     else add(t.pending, b.currency as string, Number(b.total));
   }
   for (const p of pays ?? []) { const t = P(p.partner_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.owed, p.currency as string, -Number(p.amount)); }
+  for (const a of (adjs ?? []) as Adjustment[]) { const t = P(a.partner_id!); add(t.adjusted, a.currency, signed(a)); add(t.owed, a.currency, signed(a)); }
   for (const r of refunds ?? []) { const t = P(r.partner_id as string); add(t.paid, r.currency as string, -Number(r.amount)); add(t.owed, r.currency as string, Number(r.amount)); }
   for (const w of wos ?? []) {
     const t = P(w.partner_id as string);
@@ -73,22 +76,27 @@ export async function partnerBalances(db: Db, partnerId?: string) {
   return out;
 }
 
-export interface PartnerLine { date: string; kind: "bill" | "payment" | "refund"; doc: string; id: string; ref: string | null; currency: string; billed: number; paid: number; balance: number; note: string | null }
+export interface PartnerLine { date: string; kind: "bill" | "payment" | "refund" | "adjustment"; doc: string; id: string; ref: string | null; currency: string; billed: number; paid: number; balance: number; note: string | null }
 
 /** Statement of one partner: approved bills (we owe) and payments (we paid). */
 export async function partnerStatement(db: Db, partnerId: string, from?: string, to?: string) {
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
-  const [{ data: bills }, { data: pays }, { data: refunds }] = await Promise.all([
+  const [{ data: bills }, { data: pays }, { data: refunds }, { data: adjs }] = await Promise.all([
     db.from("partner_bills").select("id,bill_no,partner_ref,bill_date,currency,total,created_at,reviewed_at").eq("partner_id", partnerId).eq("status", "approved"),
     db.from("partner_payments").select("id,payment_no,paid_at,currency,amount,reference,method,created_at").eq("partner_id", partnerId).eq("voided", false),
     db.from("cash_entries").select("id,entry_no,entry_date,currency,amount,reference,created_at").eq("partner_id", partnerId).eq("category", "partner_refund").eq("voided", false),
+    db.from("account_adjustments").select("*").eq("party_type", "partner").eq("partner_id", partnerId).eq("voided", false),
   ]);
   const raw = [
     ...(bills ?? []).map((b) => ({ date: b.bill_date as string, kind: "bill" as const, doc: b.bill_no as string, id: b.id as string, ref: (b.partner_ref as string) ?? null, currency: b.currency as string, billed: Number(b.total), paid: 0, note: null, at: String(b.created_at ?? "") })),
     ...(pays ?? []).map((p) => ({ date: p.paid_at as string, kind: "payment" as const, doc: p.payment_no as string, id: p.id as string, ref: (p.reference as string) ?? null, currency: p.currency as string, billed: 0, paid: Number(p.amount), note: p.method as string, at: String(p.created_at ?? "") })),
     // Money the partner returned to RUKN (receipt voucher): adds back to what RUKN owes / reduces an advance
     ...(refunds ?? []).map((r) => ({ date: r.entry_date as string, kind: "refund" as const, doc: r.entry_no as string, id: r.id as string, ref: (r.reference as string) ?? null, currency: r.currency as string, billed: Number(r.amount), paid: 0, note: null, at: String(r.created_at ?? "") })),
+    // Adjustments: increase → like a bill (RUKN owes more); decrease (discount earned, offset…) → like a payment
+    ...((adjs ?? []) as Adjustment[]).map((a) => ({ date: a.adj_date, kind: "adjustment" as const, doc: a.adj_no, id: a.id, ref: a.reference, currency: a.currency,
+      billed: a.effect === "increase" ? Number(a.amount) : 0, paid: a.effect === "decrease" ? Number(a.amount) : 0,
+      note: `${ADJ_KINDS[a.kind]?.en ?? a.kind} · ${ADJ_KINDS[a.kind]?.ar ?? ""}${a.description ? ` — ${a.description}` : ""}`, at: a.created_at })),
   ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
   const opening = new Map<string, number>(); const bal = new Map<string, number>();
   const lines: PartnerLine[] = [];

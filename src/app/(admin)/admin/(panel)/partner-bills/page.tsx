@@ -1,4 +1,5 @@
 import { can, requireStaff } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient } from "@/lib/admin";
 import { costsFor, type WorkOrder } from "@/lib/partners";
 import { BillsTable, NewBillForm, type Bill } from "../partners/PartnerParts";
@@ -16,6 +17,7 @@ export default async function PartnerBills() {
   ]);
   const paidByBill = new Map<string, number>();
   for (const p of pays ?? []) if (!p.voided) paidByBill.set(p.bill_id as string, (paidByBill.get(p.bill_id as string) ?? 0) + Number(p.amount));
+  for (const [k, v] of await docCredits(db, { billIds: (bills ?? []).map((b) => b.id as string) })) paidByBill.set(k, (paidByBill.get(k) ?? 0) + v);
   const partnerNames = new Map((partners ?? []).map((p) => [p.id as string, p.name as string]));
   const list = (bills ?? []) as Bill[];
 

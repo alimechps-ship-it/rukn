@@ -1,6 +1,7 @@
 import "server-only";
 import type { Db } from "./admin";
 import { withQuote } from "./cases";
+import { docCredits } from "./adjustments";
 
 export const CASH_KINDS: Record<string, { en: string; ar: string }> = {
   cash: { en: "Cash box", ar: "صندوق نقدي" },
@@ -73,9 +74,10 @@ export async function loadReceivables(db: Db, f: ReceivableFilters) {
     .eq("status", "issued").order("issue_date").limit(5000);
   const caseIds = [...new Set((invs ?? []).map((i) => i.case_id as string))];
   const invIds = (invs ?? []).map((i) => i.id as string);
-  const [{ data: cases }, { data: pays }] = await Promise.all([
+  const [{ data: cases }, { data: pays }, credits] = await Promise.all([
     caseIds.length ? db.from("cases").select("id,code,clinic_name,doctor_name,patient_ref,agent_id,country_code,status").in("id", caseIds) : Promise.resolve({ data: [] }),
     invIds.length ? db.from("case_payments").select("invoice_id,amount,voided").in("invoice_id", invIds) : Promise.resolve({ data: [] }),
+    docCredits(db, { invoiceIds: invIds }),
   ]);
   const caseMap = new Map((cases ?? []).map((c) => [c.id as string, c]));
   const paid = new Map<string, number>();
@@ -86,7 +88,7 @@ export async function loadReceivables(db: Db, f: ReceivableFilters) {
   for (const i of invs ?? []) {
     const c = caseMap.get(i.case_id as string);
     if (!c) continue;
-    const p = paid.get(i.id as string) ?? 0;
+    const p = Math.round(((paid.get(i.id as string) ?? 0) + (credits.get(i.id as string) ?? 0)) * 100) / 100; // payments + discounts / offsets on the invoice
     const balance = Math.round((Number(i.total) - p) * 100) / 100;
     if (balance <= 0) continue;
     const days = daysOverdue(i.due_date as string | null, i.issue_date as string);
@@ -231,6 +233,8 @@ export async function voucherParties(db: Db) {
   ]);
   const paid = new Map<string, number>();
   for (const p of pays ?? []) if (!p.voided) paid.set(p.bill_id as string, (paid.get(p.bill_id as string) ?? 0) + Number(p.amount));
+  const credits = await docCredits(db, { billIds: (bills ?? []).map((b) => b.id as string) });
+  for (const [k, v] of credits) paid.set(k, (paid.get(k) ?? 0) + v);
   return {
     partners: (partners ?? []).map((p) => ({ id: p.id as string, name: p.name as string, kind: p.kind as string, contact: (p.contact_name as string) ?? null, phone: (p.phone as string) ?? null, city: (p.city as string) ?? null, currency: p.currency as string, active: Boolean(p.active) })),
     bills: (bills ?? []).map((b) => ({ id: b.id as string, bill_no: b.bill_no as string, partner_id: b.partner_id as string, currency: b.currency as string, due: Math.round((Number(b.total) - (paid.get(b.id as string) ?? 0)) * 100) / 100 })).filter((b) => b.due > 0),

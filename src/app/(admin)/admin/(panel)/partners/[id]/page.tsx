@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { can, requireStaff } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
 import { costsFor, mm, PARTNER_KINDS, partnerBalances, type Partner, type WorkOrder } from "@/lib/partners";
@@ -36,6 +37,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
   const billable = wos.filter((o) => ["completed", "shipped", "received"].includes(o.status) && !billed.has(o.id));
   const paidByBill = new Map<string, number>();
   for (const x of pays ?? []) if (!x.voided && x.bill_id) paidByBill.set(x.bill_id as string, (paidByBill.get(x.bill_id as string) ?? 0) + Number(x.amount));
+  for (const [k, v] of await docCredits(db, { billIds: (bills ?? []).map((b) => b.id as string) })) paidByBill.set(k, (paidByBill.get(k) ?? 0) + v);
   const approved = ((bills ?? []) as Bill[]).filter((b) => b.status === "approved" && Number(b.total) - (paidByBill.get(b.id) ?? 0) > 0);
   const b = bal.get(id);
   const k = PARTNER_KINDS[partner.kind];
@@ -48,7 +50,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
           <h1>{partner.name} {partner.active ? null : <span className="pill archived">inactive</span>}</h1>
           <div className="sub">{k?.en} · {k?.ar}{partner.contact_name ? ` · ${partner.contact_name}` : ""}{partner.phone ? ` · ${partner.phone}` : ""}</div>
         </div>
-        {fin ? <div className="btn-row"><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div> : null}
+        {fin ? <div className="btn-row"><Link className="btn secondary" href={`/admin/finance/adjustments?partner=${id}`}>± Discount / adjustment · تسوية</Link><a className="btn secondary" href={`/admin/print/partner-statement?partner=${id}`} target="_blank" rel="noopener">🖨 Statement · كشف حساب</a></div> : null}
       </div>
       {fin ? <div className="stats">
         <div className="stat"><div className="k">Open work orders</div><div className="v">{b?.openOrders ?? 0}</div></div>

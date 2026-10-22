@@ -4,6 +4,7 @@ import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { InvoiceEditor } from "@/components/admin/InvoiceEditor";
 import { can, requireStaff } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
 import { INVOICE_STATUS, LINE_ARCHES, type InvoiceLine, type PriceItem } from "@/lib/invoices";
@@ -31,6 +32,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   ]);
   const st = INVOICE_STATUS[inv.status];
   const paid = (payments ?? []).filter((p) => !p.voided).reduce((a, p) => a + Number(p.amount), 0);
+  const credit = (await docCredits(db, { invoiceIds: [invId] })).get(invId) ?? 0; // discounts / offsets on this invoice
   const lines: InvoiceLine[] = (items ?? []).map((l) => ({
     price_item_id: l.price_item_id, code: l.code, description: l.description, description_ar: l.description_ar,
     arch: l.arch, unit: l.unit, qty: Number(l.qty), unit_price: Number(l.unit_price),
@@ -82,7 +84,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
 
       {staff && inv.status !== "void" ? (
         <>
-        {inv.status === "issued" ? <div className="flash warn">You are editing an issued invoice. It keeps its number {inv.invoice_no}; saving records revision {Number(inv.revision) + 1}. Paid so far: {fmtMoney(paid, inv.currency)}.</div> : null}
+        {inv.status === "issued" ? <div className="flash warn">You are editing an issued invoice. It keeps its number {inv.invoice_no}; saving records revision {Number(inv.revision) + 1}. Paid so far: {fmtMoney(paid, inv.currency)}{credit ? ` · adjustments ${credit > 0 ? "−" : "+"}${fmtMoney(Math.abs(credit), inv.currency)}` : ""} · <strong>balance due {fmtMoney(Number(inv.total) - paid - credit, inv.currency)}</strong>.</div> : null}
         <section className="panel">
           <InvoiceEditor
             issued={inv.status === "issued"}
@@ -123,7 +125,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
               {Number(inv.tax_rate) ? <><dt>{inv.tax_label} {Number(inv.tax_rate)}%</dt><dd>{fmtMoney(inv.tax_amount, inv.currency)}</dd></> : null}
               <dt className="grand">Total</dt><dd className="grand">{fmtMoney(inv.total, inv.currency)}</dd>
               <dt>Paid</dt><dd>{fmtMoney(paid, inv.currency)}</dd>
-              <dt><strong>Balance due</strong></dt><dd><strong>{fmtMoney(Number(inv.total) - paid, inv.currency)}</strong></dd>
+              {credit ? <><dt>Adjustments · تسويات</dt><dd>{credit > 0 ? "− " : "+ "}{fmtMoney(Math.abs(credit), inv.currency)}</dd></> : null}
+              <dt><strong>Balance due</strong></dt><dd><strong>{fmtMoney(Number(inv.total) - paid - credit, inv.currency)}</strong></dd>
             </dl>
           </section>
           <div>

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { can, getStaffUser } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { countryName, fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
@@ -35,7 +36,8 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
   const cur = inv.currency as string;
   const paid = (payments ?? []).reduce((a, p) => a + Number(p.amount), 0);
   const discount = Math.min(Number(inv.discount_amount), Number(inv.subtotal));
-  const balance = Number(inv.total) - paid;
+  const credit = (await docCredits(db, { invoiceIds: [invId] })).get(invId) ?? 0;
+  const balance = Number(inv.total) - paid - credit;
   const draft = inv.status === "draft";
 
   return (
@@ -131,6 +133,7 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
           {!draft ? (
             <dl className="kv2" style={{ gridTemplateColumns: "1fr auto", marginTop: 6 }}>
               <dt>Paid · المدفوع</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, cur)}</dd>
+              {credit ? <><dt>Adjustments · تسويات</dt><dd style={{ textAlign: "end" }}>{credit > 0 ? "− " : "+ "}{fmtMoney(Math.abs(credit), cur)}</dd></> : null}
               <dt><strong style={{ color: "#10263d" }}>Balance due · المتبقي</strong></dt><dd style={{ textAlign: "end", color: balance > 0 ? "#b42318" : "#067647" }}>{fmtMoney(balance, cur)}</dd>
             </dl>
           ) : null}

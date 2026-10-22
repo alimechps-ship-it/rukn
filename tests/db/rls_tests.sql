@@ -1146,6 +1146,72 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.cash_entries where partner_id is not null), 'case manager sees no partner vouchers');
 reset role;
 
+-- Account adjustments: discounts, extra charges, currency differences, offsets
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_inv record; v_id uuid; g uuid; n int; begin
+  select i.id, i.currency into v_inv from public.case_invoices i join public.cases c on c.id = i.case_id
+    where i.status = 'issued' and c.agent_id = '00000000-0000-0000-0000-0000000000a1' limit 1;
+  insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency, invoice_id)
+  values ('agent', '00000000-0000-0000-0000-0000000000a1', 'discount_allowed', 'decrease', 50, v_inv.currency, v_inv.id) returning id into v_id;
+  perform t.ok((select adj_no like 'AJ-%' and case_id is not null from public.account_adjustments where id = v_id), 'discount allowed to an agent is numbered AJ- and linked to the invoice''s case');
+  begin
+    insert into public.account_adjustments (party_type, partner_id, kind, effect, amount, currency) values ('partner', '00000000-0000-0000-0000-0000000000f2', 'discount_allowed', 'decrease', 5, 'USD');
+    perform t.ok(false, 'discount allowed to partner must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'a discount allowed is only for agents'); end;
+  begin
+    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency, invoice_id)
+    values ('agent', '00000000-0000-0000-0000-0000000000a1', 'other', 'decrease', 5, case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, v_inv.id);
+    perform t.ok(false, 'currency mismatch must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'an adjustment on an invoice uses the invoice currency'); end;
+  insert into public.account_adjustments (party_type, partner_id, kind, effect, amount, currency) values ('partner', '00000000-0000-0000-0000-0000000000f2', 'discount_earned', 'decrease', 10, 'USD');
+  perform t.ok(true, 'discount earned from a lab is recorded');
+  begin
+    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'extra_charge', 'decrease', 5, 'USD');
+    perform t.ok(false, 'extra charge must increase');
+  exception when invalid_parameter_value then perform t.ok(true, 'an extra charge always increases the balance'); end;
+  begin
+    insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'offset', 'decrease', 5, 'USD');
+    perform t.ok(false, 'single offset must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'offsets are only made in pairs'); end;
+  g := public.make_offset('agent', '00000000-0000-0000-0000-0000000000a1', 'partner', '00000000-0000-0000-0000-0000000000f2', 'net', 20, 'USD');
+  perform t.ok((select count(*) = 2 and bool_and(effect = 'decrease') from public.account_adjustments where offset_group = g), 'set-off: both balances decrease by the same amount');
+  g := public.make_offset('agent', '00000000-0000-0000-0000-0000000000a1', 'agent', '00000000-0000-0000-0000-0000000000a2', 'move', 30, 'USD');
+  perform t.ok((select count(*) filter (where effect = 'decrease' and agent_id = '00000000-0000-0000-0000-0000000000a1') = 1
+                   and count(*) filter (where effect = 'increase' and agent_id = '00000000-0000-0000-0000-0000000000a2') = 1 from public.account_adjustments where offset_group = g), 'moving a balance: A decreases, B increases');
+  update public.exchange_rates set per_usd = 50 where currency = 'EGP';
+  g := public.make_offset('partner', '00000000-0000-0000-0000-0000000000f2', 'partner', '00000000-0000-0000-0000-0000000000f3', 'move', 10, 'USD', 'EGP');
+  perform t.ok((select amount = 500 and fx_rate = 50 from public.account_adjustments where offset_group = g and currency = 'EGP'), 'offset across currencies uses the exchange rate (10 USD = 500 EGP)');
+  update public.account_adjustments set voided = true, void_reason = 'test' where offset_group = g and currency = 'USD';
+  perform t.ok((select bool_and(voided) from public.account_adjustments where offset_group = g), 'voiding one side voids the whole offset');
+  begin
+    update public.account_adjustments set amount = 1 where id = v_id;
+    perform t.ok(false, 'edit must fail');
+  exception when insufficient_privilege then perform t.ok(true, 'adjustments cannot be edited (void and redo)'); end;
+  begin
+    delete from public.account_adjustments where id = v_id;
+    get diagnostics n = row_count;
+    perform t.ok(n = 0, 'adjustments are never deleted');
+  exception when insufficient_privilege then perform t.ok(true, 'adjustments are never deleted'); end;
+end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) >= 3 and bool_and(agent_id = '00000000-0000-0000-0000-0000000000a1') from public.account_adjustments), 'the agent sees his own adjustments only');
+do $$ begin
+  insert into public.account_adjustments (party_type, agent_id, kind, effect, amount, currency) values ('agent', '00000000-0000-0000-0000-0000000000a1', 'discount_allowed', 'decrease', 999, 'USD');
+  perform t.ok(false, 'agent must not create');
+exception when insufficient_privilege then perform t.ok(true, 'agents cannot give themselves a discount'); end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000e2');
+set role authenticated;
+select t.ok((select count(*) >= 2 and bool_and(partner_id = '00000000-0000-0000-0000-0000000000f2') from public.account_adjustments), 'the lab sees its own adjustments only');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.account_adjustments), 'case manager sees no adjustments');
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

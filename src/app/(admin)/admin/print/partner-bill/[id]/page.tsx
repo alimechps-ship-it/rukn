@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { can, getStaffUser } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { BILL_STATUS } from "@/lib/partners";
@@ -24,7 +25,7 @@ export default async function PrintPartnerBill({ params }: { params: Promise<{ i
     db.from("partner_payments").select("payment_no,paid_at,amount,currency").eq("bill_id", id).eq("voided", false).order("paid_at"),
     loadCompany(db),
   ]);
-  const paid = (pays ?? []).reduce((a, p) => a + Number(p.amount), 0);
+  const paid = (pays ?? []).reduce((a, p) => a + Number(p.amount), 0) + ((await docCredits(db, { billIds: [id] })).get(id) ?? 0); // payments + discounts / offsets
   const words = amountInWords(Number(b.total), b.currency);
   return (
     <PrintShell back={can.finance(user) ? `/admin/partners/${b.partner_id}` : "/admin/partner-bills"} company={company} docRef={b.bill_no}>
@@ -59,7 +60,7 @@ export default async function PrintPartnerBill({ params }: { params: Promise<{ i
         <div className="box">
           <dl className="kv2" style={{ gridTemplateColumns: "1fr auto", fontSize: "10.5pt" }}>
             <dt>Total · الإجمالي</dt><dd style={{ textAlign: "end" }}>{fmtMoney(b.total, b.currency)}</dd>
-            {b.status === "approved" ? <><dt>Paid · المدفوع</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, b.currency)}</dd><dt><strong>Balance · المتبقي</strong></dt><dd style={{ textAlign: "end" }}>{fmtMoney(Number(b.total) - paid, b.currency)}</dd></> : null}
+            {b.status === "approved" ? <><dt>Paid & adjusted · المدفوع والتسويات</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, b.currency)}</dd><dt><strong>Balance · المتبقي</strong></dt><dd style={{ textAlign: "end" }}>{fmtMoney(Number(b.total) - paid, b.currency)}</dd></> : null}
           </dl>
           {(pays ?? []).length ? <div className="note">Payments: {(pays ?? []).map((p) => `${p.payment_no} (${fmtDay(p.paid_at)}, ${fmtMoney(p.amount, p.currency)})`).join(" · ")}</div> : null}
         </div>

@@ -7,6 +7,7 @@ import { ConfirmAction } from "@/components/admin/ConfirmAction";
 import { ItemsEditor } from "@/components/admin/ItemsEditor";
 import { Select, Text, TextArea } from "@/components/admin/fields";
 import { can, requireStaff } from "@/lib/auth";
+import { docCredits } from "@/lib/adjustments";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { peopleWithRole, profileMap, serviceOptions } from "@/lib/case-data";
 import {
@@ -71,7 +72,8 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const paid = (payments ?? []).filter((p) => !p.voided).reduce<Record<string, number>>((acc, p) => ({ ...acc, [p.currency]: (acc[p.currency] ?? 0) + Number(p.amount) }), {});
   const intakeItems = (c.intake_items ?? []) as { title: string; text: string }[];
   const issuedInvoices = (invoices ?? []).filter((i) => i.status === "issued");
-  const paidOn = (invId: string) => (payments ?? []).filter((p) => !p.voided && p.invoice_id === invId).reduce((a, p) => a + Number(p.amount), 0);
+  const credits = await docCredits(db, { invoiceIds: issuedInvoices.map((i) => i.id as string) }); // discounts / offsets linked to invoices
+  const paidOn = (invId: string) => (payments ?? []).filter((p) => !p.voided && p.invoice_id === invId).reduce((a, p) => a + Number(p.amount), 0) + (credits.get(invId) ?? 0);
   const invNo = new Map((invoices ?? []).map((i) => [i.id, i.invoice_no as string | null]));
   const pendingNotices = (claims ?? []).filter((n) => n.status === "pending");
   const hasPlanFile = (files ?? []).some((f) => f.is_deliverable);

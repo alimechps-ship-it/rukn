@@ -309,3 +309,6 @@ insert into public.case_price_items (code, category, name_en, name_ar, unit_en, 
   ('ACC-CASE', 'accessory', 'Aligner case & chewies',                        'علبة أليانر وأدوات التثبيت',                       'piece',    'قطعة',   0, 'USD', 110),
   ('SHIP',     'service',   'Shipping & handling',                           'الشحن والتوصيل',                                  'shipment', 'شحنة',   0, 'USD', 120)
 on conflict (code) do nothing;
+
+-- Refresh the API schema cache so the new tables are usable immediately
+notify pgrst, 'reload schema';

@@ -462,3 +462,6 @@ create policy "case_files_upload" on storage.objects for insert to authenticated
               and lower(split_part(name, '.', -1)) in ('stl', 'ply', 'obj', '3mf', 'zip', 'pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'dcm', 'mp4', 'mov'));
 create policy "case_files_remove" on storage.objects for delete to authenticated
   using (bucket_id = 'case-files' and public.can_access_case(public.case_id_from_path(name)));
+
+-- Refresh the API schema cache so the new tables are usable immediately
+notify pgrst, 'reload schema';

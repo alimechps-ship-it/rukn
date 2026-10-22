@@ -264,7 +264,7 @@ export async function decidePlan(caseId: string, _: ActionResult, fd: FormData):
 /** Called after the browser uploaded a file straight to the private bucket. */
 export async function registerCaseFile(input: { caseId: string; path: string; filename: string; size: number; mime: string; category: string; deliverable: boolean }) {
   try {
-    await assertStaff(can.cases);
+    await assertStaff(can.files);
     const db = await createSessionClient();
     const ext = input.filename.split(".").pop()?.toLowerCase() ?? "";
     if (!FILE_EXTENSIONS.includes(ext)) return { ok: false, message: `File type .${ext} is not accepted.` };

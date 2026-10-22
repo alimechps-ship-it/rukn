@@ -6,7 +6,7 @@ import { createSessionClient, errMessage, str } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
 
 const IN_CATS = ["owner_deposit", "advance_return", "other_income"];
-const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other"];
+const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "planning", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other"];
 const KINDS = ["cash", "bank", "wallet"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

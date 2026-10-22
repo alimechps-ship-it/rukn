@@ -18,6 +18,7 @@ export const OUT_CATEGORIES: Record<string, { en: string; ar: string }> = {
   advance: { en: "Custody / advance to a person", ar: "عهدة أو سلفة لشخص" },
   salary: { en: "Salary / commission", ar: "رواتب أو عمولات" },
   lab: { en: "Lab / production", ar: "معمل وتصنيع" },
+  planning: { en: "Treatment planning fees", ar: "أتعاب التخطيط العلاجي" },
   supplies: { en: "Materials & supplies", ar: "خامات ومستلزمات" },
   shipping: { en: "Shipping & courier", ar: "شحن ومناديب توصيل" },
   rent: { en: "Rent", ar: "إيجار" },

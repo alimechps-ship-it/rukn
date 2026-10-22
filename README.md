@@ -54,6 +54,8 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 | Sales Manager | inquiries, statuses, assignment, internal notes, CSV export |
 | Translator | draft translations **only for the languages assigned to them**; cannot publish, cannot see leads or settings |
 | Case Manager | all cases from all agents: intake, status workflow, files, quotation, payments/receipts, shipping, delivery, reports |
+| Treatment planner (partner) | external doctor / clinic doing digital treatment plans: sees only the work orders sent to him (clinical brief + files), uploads the plan, accepts / completes orders, bills RUKN, sees his statement |
+| Production lab (partner) | external lab producing aligners / Snap-On / retainers: same portal for production orders, can ship with tracking, bills RUKN |
 | Agent | external representative: creates cases, uploads records, follows **only his own cases**, records the doctor's plan approval, prints his documents and reports; no access to the website CMS or leads |
 
 ### Agents & case management
@@ -75,6 +77,11 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - **AI assistant** (Finance → AI assistant, case staff only): questions in Arabic/English answered from live data through read-only tools (cases, stats, receivables, agent balances, cash boxes, person accounts, payment notices). Queries run with the user's session, so RLS applies. Daily limit per user (`AI_DAILY_LIMIT`), every request logged in `ai_usage`.
   - **Receipt reader**: when an agent attaches a transfer receipt (image/PDF) to a payment notice, it is read in the background and compared with the notice (amount, currency, date, reference) → "matches" / "differences found" shown to case staff only; "Re-check with AI" button. It never accepts or rejects by itself.
   - Local tests use `tests/e2e/mock-anthropic.mjs` (set `ANTHROPIC_BASE_URL=http://localhost:54400`).
+- **Planners & labs** (migration `20261022001100_partners.sql`):
+  - Partners (treatment planners, production labs) with logins (Users & roles → role *Treatment planner* / *Production lab* + partner).
+  - **Work orders** `WO-` sent from the case page (planning / production) with instructions, items, due date and agreed cost. The partner accepts or declines, uploads files, completes (labs also ship with tracking); messages and full history per order; printable work order.
+  - Partner files stay **internal** until RUKN presses *Send to agent*. Partners never see clinic prices, agents, payments or other partners.
+  - **Partner bills** `PB-` (partner sends from his completed orders, or RUKN records one) → RUKN approves / rejects; **payments** `PP-` paid from a cash box create a payment voucher automatically; partner statements (screen + print); case page shows invoiced − costs.
 - Create an agent: Users & roles → invite with role *Agent* and fill phone/country/organization (needs `SUPABASE_SERVICE_ROLE_KEY`). The agent signs in at `/admin`.
 
 Permissions are enforced three times: the admin UI hides what a role cannot do, every server action checks the role, and **PostgreSQL Row Level Security** decides what each signed-in user can read or write (this is the authoritative layer). There is no public registration; a user without a role has no access even if an account exists.
@@ -173,9 +180,10 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (179 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (217 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Agents/case workflow** (24 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.
+- **Planners & labs** (27 checks: partner logins, work orders, internal files, bills, payments, statements, isolation): see `tests/e2e/partners_flow.py`.
 - **AI tools** (10 checks with the mock API): see `tests/e2e/ai_flow.py`.
 - **Agent payments** (20 checks: receipt confirmations, payment notices with proof, confirm/reject, statements): see `tests/e2e/agent_payments_flow.py`.
 - **Finance** (21 checks: invoice revision, receivables, cash boxes, vouchers, person accounts): see `tests/e2e/finance_flow.py`.

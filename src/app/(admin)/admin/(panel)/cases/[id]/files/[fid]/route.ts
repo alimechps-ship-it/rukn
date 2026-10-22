@@ -6,7 +6,7 @@ import { createSessionClient } from "@/lib/admin";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string; fid: string }> }) {
   const { id, fid } = await params;
   const user = await getStaffUser();
-  if (!user || !can.staff(user) || !can.cases(user)) return new NextResponse("Forbidden", { status: 403 });
+  if (!user || !can.staff(user) || !can.files(user)) return new NextResponse("Forbidden", { status: 403 });
   const db = await createSessionClient();
   const { data: f } = await db.from("case_files").select("storage_path,filename").eq("id", fid).eq("case_id", id).maybeSingle();
   if (!f) return new NextResponse("Not found", { status: 404 });

@@ -234,3 +234,5 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .ai-box.ai-muted { color: var(--muted); }
 .inline-ai { margin-top: 6px; }
 .inline-ai .flash { margin: 6px 0 0; font-size: .85rem; }
+.check-list { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fb; }
+.check-list .check { align-items: flex-start; }

@@ -20,6 +20,8 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   translator: "Translator",
   case_manager: "Case Manager",
   agent: "Agent",
+  planner: "Treatment planner (partner)",
+  lab: "Production lab (partner)",
 };
 
 /** Current signed-in user with roles (verified against Supabase Auth on every call). */
@@ -49,7 +51,11 @@ export const can = {
   /** Anyone allowed into /admin (back-office staff and field agents). */
   staff: (u: StaffUser | null) => !!u && u.isActive && u.roles.length > 0,
   /** Back-office roles (everything except agents). */
-  backOffice: (u: StaffUser | null) => !!u?.roles.some((r) => r !== "agent"),
+  backOffice: (u: StaffUser | null) => !!u?.roles.some((r) => r !== "agent" && r !== "planner" && r !== "lab"),
+  /** External treatment planners and production labs (partner portal). */
+  partner: (u: StaffUser | null) => !!u?.roles.some((r) => r === "planner" || r === "lab"),
+  /** Can open case files: case staff, agents (own cases) and partners (their work orders) — RLS decides which. */
+  files: (u: StaffUser | null) => !!u?.roles.some((r) => ["super_admin", "case_manager", "agent", "planner", "lab"].includes(r)),
   caseStaff: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager"),
   agent: (u: StaffUser | null) => !!u?.roles.includes("agent"),
   cases: (u: StaffUser | null) => !!u?.roles.some((r) => r === "super_admin" || r === "case_manager" || r === "agent"),

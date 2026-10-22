@@ -44,6 +44,33 @@ export default async function PanelLayout({ children }: { children: React.ReactN
       ],
     });
   }
+  if (can.partner(user)) {
+    const db = await createSessionClient();
+    const { count: openOrders } = await db.from("case_assignments").select("id", { count: "exact", head: true }).in("status", ["assigned", "accepted", "in_progress"]);
+    groups.push({
+      label: "Partner portal · بوابة الشركاء",
+      items: [
+        { href: "/admin/work", label: "Work orders · أوامر العمل", badge: openOrders ?? 0 },
+        { href: "/admin/partner-bills", label: "My bills · فواتيري" },
+        { href: "/admin/partner-statement", label: "My statement · كشف حسابي" },
+      ],
+    });
+  }
+  if (can.caseStaff(user)) {
+    const db = await createSessionClient();
+    const [{ count: waiting }, { count: billsToReview }] = await Promise.all([
+      db.from("case_assignments").select("id", { count: "exact", head: true }).in("status", ["completed", "shipped"]),
+      db.from("partner_bills").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+    ]);
+    groups.push({
+      label: "Partners · المخططون والمعامل",
+      items: [
+        { href: "/admin/partners", label: "Planners & labs · الشركاء" },
+        { href: "/admin/work", label: "Work orders · أوامر العمل", badge: waiting ?? 0 },
+        { href: "/admin/partner-bills", label: "Partner bills · فواتير الشركاء", badge: billsToReview ?? 0 },
+      ],
+    });
+  }
   if (can.caseStaff(user)) {
     const db = await createSessionClient();
     const { count: pendingNotices } = await db.from("case_payment_claims").select("id", { count: "exact", head: true }).eq("status", "pending");

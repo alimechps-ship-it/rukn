@@ -9,9 +9,9 @@ import { FILE_CATEGORIES, FILE_EXTENSIONS, MAX_FILE_BYTES } from "@/lib/cases";
 type Row = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string; pct?: number };
 
 /** Uploads clinical files straight into the private "case-files" bucket (RLS-protected). */
-export function CaseFileUploader({ caseId, staff }: { caseId: string; staff: boolean }) {
+export function CaseFileUploader({ caseId, staff, categories, defaultCategory }: { caseId: string; staff: boolean; categories?: string[]; defaultCategory?: string }) {
   const input = useRef<HTMLInputElement>(null);
-  const [category, setCategory] = useState(staff ? "treatment_plan" : "scan_upper");
+  const [category, setCategory] = useState(defaultCategory ?? (staff ? "treatment_plan" : "scan_upper"));
   const [deliverable, setDeliverable] = useState(staff);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -47,7 +47,7 @@ export function CaseFileUploader({ caseId, staff }: { caseId: string; staff: boo
         <div className="field">
           <label htmlFor="cf-cat">File type</label>
           <select id="cf-cat" value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy}>
-            {Object.entries(FILE_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}
+            {Object.entries(FILE_CATEGORIES).filter(([k]) => (categories ? categories.includes(k) : !["payment_proof", "delivery_proof"].includes(k))).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}
           </select>
         </div>
         {staff ? (

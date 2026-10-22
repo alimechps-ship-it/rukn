@@ -11,9 +11,13 @@ import type { AppRole } from "@/lib/types";
 function fail(e: unknown): ActionResult { return { ok: false, message: e instanceof Error ? e.message : "Unexpected error." }; }
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator", "case_manager", "agent"];
+const ROLES: AppRole[] = ["super_admin", "content_manager", "sales_manager", "translator", "case_manager", "agent", "planner", "lab"];
 function contactFields(fd: FormData) {
-  return { phone: str(fd, "phone", 40), country: str(fd, "country", 80), region: str(fd, "region", 120), organization: str(fd, "organization", 160) };
+  const partner = String(fd.get("partner_id") ?? "");
+  return {
+    phone: str(fd, "phone", 40), country: str(fd, "country", 80), region: str(fd, "region", 120), organization: str(fd, "organization", 160),
+    ...(fd.has("partner_id") ? { partner_id: /^[0-9a-f-]{36}$/i.test(partner) ? partner : null } : {}),
+  };
 }
 
 // ---- Site settings ------------------------------------------------------------
@@ -156,6 +160,13 @@ async function origin() {
 function parseRoles(fd: FormData) {
   return ROLES.filter((r) => bool(fd, `role_${r}`));
 }
+/** Partner users must be linked to their partner record. */
+function partnerCheck(roles: AppRole[], fd: FormData) {
+  if (roles.some((r) => r === "planner" || r === "lab") && !/^[0-9a-f-]{36}$/i.test(String(fd.get("partner_id") ?? ""))) {
+    return "Choose the partner (planner clinic or lab) this user belongs to.";
+  }
+  return null;
+}
 async function parseLocales(fd: FormData) {
   const db = await createSessionClient();
   return (await allLanguages(db)).map((l) => l.code).filter((c) => bool(fd, `locale_${c}`));
@@ -170,6 +181,8 @@ export async function inviteUser(_: ActionResult, fd: FormData): Promise<ActionR
     if (!EMAIL.test(email)) return { ok: false, message: "Enter a valid e-mail address." };
     const roles = parseRoles(fd);
     if (!roles.length) return { ok: false, message: "Select at least one role." };
+    const pc = partnerCheck(roles, fd);
+    if (pc) return { ok: false, message: pc };
     const { data, error } = await svc.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${await origin()}/admin/auth/confirm?next=/admin/reset-password`,
       data: { full_name: str(fd, "full_name", 120) ?? "" },
@@ -213,6 +226,8 @@ export async function addUser(prev: ActionResult, fd: FormData): Promise<ActionR
     if (!EMAIL.test(email)) return { ok: false, message: "Enter a valid e-mail address." };
     const roles = parseRoles(fd);
     if (!roles.length) return { ok: false, message: "Select at least one role." };
+    const pc = partnerCheck(roles, fd);
+    if (pc) return { ok: false, message: pc };
     const typed = String(fd.get("password") ?? "").trim();
     const password = typed || generatePassword();
     const bad = typed ? checkPassword(typed) : null;
@@ -258,6 +273,8 @@ export async function updateUserAccess(userId: string, _: ActionResult, fd: Form
     const admin = await assertStaff(can.admin);
     const db = await createSessionClient();
     const roles = parseRoles(fd);
+    const pc = partnerCheck(roles, fd);
+    if (pc) return { ok: false, message: pc };
     const { data: current } = await db.from("user_roles").select("role").eq("user_id", userId);
     const have = (current ?? []).map((r) => r.role as AppRole);
     const add = roles.filter((r) => !have.includes(r));

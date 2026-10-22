@@ -16,16 +16,20 @@ const ROLE_HELP: Record<AppRole, string> = {
   translator: "Draft translations in permitted languages only",
   case_manager: "All cases: processing, payments, shipping, reports",
   agent: "Field agent: submits and follows his own cases only",
+  planner: "External treatment-planning doctor / clinic: sees only the work orders sent to him",
+  lab: "External production lab (aligners, Snap-On, retainers): sees only its work orders",
 };
 
 export default async function Users() {
   const me = await requireStaff(can.admin);
   const db = await createSessionClient();
-  const [{ data: profiles, error }, { data: roles }, langs] = await Promise.all([
+  const [{ data: profiles, error }, { data: roles }, langs, { data: partners }] = await Promise.all([
     db.from("profiles").select("*").order("created_at"),
     db.from("user_roles").select("user_id,role"),
     allLanguages(db),
+    db.from("partners").select("id,name,kind").eq("active", true).order("name"),
   ]);
+  const partnerOptions = (partners ?? []).map((p) => ({ value: p.id as string, label: `${p.name} (${p.kind === "lab" ? "lab" : "planner"})` }));
   const serviceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
   return (
     <>
@@ -46,6 +50,7 @@ export default async function Users() {
           <Text name="organization" label="Company / organization (agents)" />
           <div className="field"><label htmlFor="new-country">Country (agents)</label><input id="new-country" name="country" type="text" list="country-list" autoComplete="off" maxLength={80} /></div>
           <Text name="region" label="Region / territory (agents)" />
+          <div className="field"><label htmlFor="new-partner">Partner (planners / labs)</label><select id="new-partner" name="partner_id" defaultValue=""><option value="">—</option>{partnerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} defaultChecked={r === "agent"} /> {ROLE_LABELS[r]}</label>)}</div></div>
           <div className="field full"><label>Translator languages</label><div className="btn-row">{langs.map((l) => <label key={l.code} className="check"><input type="checkbox" name={`locale_${l.code}`} /> {l.native_name}</label>)}</div></div>
           <div className="full btn-row">
@@ -81,6 +86,7 @@ export default async function Users() {
                 <Text name="country" label="Country" defaultValue={p.country} />
                 <Text name="region" label="Region / territory" defaultValue={p.region} />
                 <Text name="phone" label="Phone / WhatsApp" type="tel" defaultValue={p.phone} />
+                <div className="field"><label htmlFor={`partner-${p.id}`}>Partner (planners / labs)</label><select id={`partner-${p.id}`} name="partner_id" defaultValue={p.partner_id ?? ""}><option value="">—</option>{partnerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
                 <div className="field full"><label>Roles</label><div className="btn-row">{ROLES.map((r) => <label key={r} className="check" title={ROLE_HELP[r]}><input type="checkbox" name={`role_${r}`} defaultChecked={mine.includes(r)} /> {ROLE_LABELS[r]}</label>)}</div></div>
                 <div className="field full"><label>Translator languages</label><div className="btn-row">{langs.map((l) => <label key={l.code} className="check"><input type="checkbox" name={`locale_${l.code}`} defaultChecked={(p.allowed_locales ?? []).includes(l.code)} /> {l.native_name}</label>)}</div></div>
               </div>

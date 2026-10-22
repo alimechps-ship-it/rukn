@@ -72,7 +72,7 @@ with sync_playwright() as p:
     dl = a1.request.get(BASE + a1.locator("table.data a", has_text=".stl").first.get_attribute("href"), max_redirects=0)
     check("File download uses a short-lived signed link", dl.status in (302, 307) and "token=" in (dl.headers.get("location") or ""))
     a1.fill("#body", "Records sent via courier as well.")
-    a1.get_by_role("button", name="Add").click()
+    a1.get_by_role("button", name="Add", exact=True).click()
     a1.wait_for_selector(".flash.ok", timeout=15000)
     shot(a1, "case_agent_submitted")
 
@@ -104,7 +104,7 @@ with sync_playwright() as p:
     submit(cm, "form:has(select[name=status])", "Update status", "Status updated")
     cm.fill("#body", "Internal: check bite on stage 4")
     cm.select_option("form:has(#body) select[name=visibility]", "internal")
-    cm.get_by_role("button", name="Add").click()
+    cm.get_by_role("button", name="Add", exact=True).click()
     cm.wait_for_selector(".flash.ok:has-text('Internal note')", timeout=15000)
 
     # ---------------- Agent records doctor's approval ----------------

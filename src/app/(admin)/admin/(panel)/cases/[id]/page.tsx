@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
@@ -19,6 +20,8 @@ import { confirmReceipt } from "../../_actions/payments";
 import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
 import { NoticesTable, type Notice } from "../../finance/Notices";
 import { isAiConfigured } from "@/lib/ai";
+import { createWorkOrder, sendFileToAgent } from "../../_actions/partners";
+import { WO_STATUS, WORK_KINDS, type WorkOrder } from "@/lib/partners";
 import { INVOICE_STATUS } from "@/lib/invoices";
 import { CaseFormFields } from "../CaseForm";
 
@@ -35,13 +38,15 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const db = await createSessionClient();
   const { data: c } = await db.from("cases").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, { data: cashBoxes }, { data: claims }, services, agents, staffUsers] = await Promise.all([
+  const [{ data: files }, { data: events }, { data: payments }, { data: invoices }, { data: cashBoxes }, { data: claims }, { data: workOrders }, { data: partnerList }, services, agents, staffUsers] = await Promise.all([
     db.from("case_files").select("*").eq("case_id", id).order("created_at"),
     db.from("case_events").select("*").eq("case_id", id).order("created_at"),
     db.from("case_payments").select("*").eq("case_id", id).order("created_at"),
     db.from("case_invoices").select("id,invoice_no,status,issue_date,currency,total,revision").eq("case_id", id).order("created_at"),
     staff ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] as { id: string; name: string; currency: string }[] }),
     db.from("case_payment_claims").select("*").eq("case_id", id).order("created_at", { ascending: false }),
+    staff ? db.from("case_assignments").select("*").eq("case_id", id).order("created_at") : Promise.resolve({ data: [] as WorkOrder[] }),
+    staff ? db.from("partners").select("id,name,kind,currency").eq("active", true).order("kind").order("name") : Promise.resolve({ data: [] as { id: string; name: string; kind: string; currency: string }[] }),
     serviceOptions(db),
     staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([]),
     staff ? peopleWithRole(db, ["case_manager", "super_admin"]) : Promise.resolve([]),
@@ -61,6 +66,12 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const invoicesForAgent = issuedInvoices.map((i) => ({ id: i.id as string, invoice_no: i.invoice_no as string, currency: i.currency as string, balance: Math.round((Number(i.total) - paidOn(i.id)) * 100) / 100 }));
   const receiptNos = new Map((payments ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]));
   const nameMap = new Map([...people.entries()].map(([k, v]) => [k, v.name]));
+  const wos = (workOrders ?? []) as WorkOrder[];
+  const partnerName = new Map((partnerList ?? []).map((p) => [p.id as string, p.name as string]));
+  const costs = new Map<string, number>(); const revenue = new Map<string, number>();
+  for (const w of wos) if (w.cost_amount !== null && !["cancelled", "rejected"].includes(w.status)) costs.set(w.currency, (costs.get(w.currency) ?? 0) + Number(w.cost_amount));
+  for (const i of issuedInvoices) revenue.set(i.currency as string, (revenue.get(i.currency as string) ?? 0) + Number(i.total));
+  const margin = [...new Set([...costs.keys(), ...revenue.keys()])].map((cur) => ({ cur, rev: revenue.get(cur) ?? 0, cost: costs.get(cur) ?? 0 }));
 
   return (
     <>
@@ -154,7 +165,9 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                   <tbody>
                     {(files ?? []).map((f) => (
                       <tr key={f.id}>
-                        <td><a href={`/admin/cases/${c.id}/files/${f.id}`}>{f.filename}</a>{f.is_deliverable ? <div><span className="pill qualified">from RUKN</span></div> : null}</td>
+                        <td><a href={`/admin/cases/${c.id}/files/${f.id}`}>{f.filename}</a>{f.is_deliverable ? <div><span className="pill qualified">from RUKN</span></div> : null}
+                          {staff && f.internal ? <div><span className="pill changes">from partner · not sent</span>
+                            <ActionForm action={sendFileToAgent} className="inline-ai"><input type="hidden" name="id" value={f.id} /><SubmitButton className="btn teal small" pendingText="Sending…">Send to agent →</SubmitButton></ActionForm></div> : null}</td>
                         <td className="small">{FILE_CATEGORIES[f.category]?.en ?? f.category}</td>
                         <td className="small">{f.size_bytes ? kb(Number(f.size_bytes)) : "—"}</td>
                         <td className="small muted">{people.get(f.uploaded_by)?.name ?? "—"}<br />{fmtDate(f.created_at)}</td>
@@ -260,6 +273,56 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
               </details>
             ) : null}
           </section>
+
+          {staff ? (
+            <section className="panel">
+              <h2>Planning & production · التخطيط والتصنيع</h2>
+              {wos.length ? (
+                <table className="data">
+                  <tbody>
+                    {wos.map((w) => (
+                      <tr key={w.id} className="row-link">
+                        <td><a className="stretched mono small" href={`/admin/work/${w.id}`}>{w.order_no}</a><div className="small">{WORK_KINDS[w.kind]?.en} · {partnerName.get(w.partner_id) ?? ""}</div></td>
+                        <td><span className={`pill ${WO_STATUS[w.status]?.tone}`}>{WO_STATUS[w.status]?.en}</span></td>
+                        <td className="num small nowrap">{w.cost_amount !== null ? fmtMoney(w.cost_amount, w.currency) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <p className="small muted">No work order yet. Send the case to a planner for the treatment plan, then to a lab for production.</p>}
+              {margin.length ? (
+                <dl className="kv" style={{ marginTop: 10 }}>
+                  {margin.map((m) => (
+                    <Fragment key={m.cur}>
+                      <dt>Invoiced − costs ({m.cur})</dt>
+                      <dd>{fmtMoney(m.rev, m.cur)} − {fmtMoney(m.cost, m.cur)} = <strong style={{ color: m.rev - m.cost >= 0 ? "#067647" : "#b42318" }}>{fmtMoney(m.rev - m.cost, m.cur)}</strong></dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              ) : null}
+              <details style={{ marginTop: 10 }} open={!wos.length}>
+                <summary className="small"><strong>+ Send a work order · إرسال أمر عمل</strong></summary>
+                {(partnerList ?? []).length ? (
+                  <ActionForm action={createWorkOrder.bind(null, c.id)} className="form-grid" resetOnSuccess>
+                    <div className="field full"><label htmlFor="wo-partner">To · إلى *</label>
+                      <select id="wo-partner" name="partner_id" defaultValue="">
+                        <option value="" disabled>— choose a planner or lab —</option>
+                        <optgroup label="Treatment planners · المخططون">{(partnerList ?? []).filter((p) => p.kind === "planner").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+                        <optgroup label="Production labs · المعامل">{(partnerList ?? []).filter((p) => p.kind === "lab").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
+                      </select>
+                    </div>
+                    <div className="field full"><label htmlFor="wo-title">Work · المطلوب *</label><input id="wo-title" type="text" name="title" maxLength={200} required placeholder="e.g. Digital setup both arches / 22 aligners + retainers" /></div>
+                    <div className="field full"><label htmlFor="wo-ins">Instructions · تعليمات</label><textarea id="wo-ins" name="instructions" rows={3} maxLength={4000} dir="auto" /></div>
+                    <div className="field full"><label>Items (item → quantity) · البنود</label><ItemsEditor name="items" initial={[]} dir="ltr" /></div>
+                    <div className="field"><label htmlFor="wo-due">Due date</label><input id="wo-due" type="date" name="due_date" /></div>
+                    <div className="field"><label htmlFor="wo-cost">Agreed cost · التكلفة</label><input id="wo-cost" type="number" name="cost_amount" min="0" step="0.01" /></div>
+                    <div className="field"><label htmlFor="wo-cur">Currency</label><input id="wo-cur" type="text" name="currency" maxLength={3} placeholder="partner currency" /></div>
+                    <div className="full"><SubmitButton className="btn teal small">Send work order</SubmitButton></div>
+                  </ActionForm>
+                ) : <p className="small muted">Add planners and labs first (Partners → Planners & labs).</p>}
+              </details>
+            </section>
+          ) : null}
 
           <section className="panel">
             <div className="panel-head">

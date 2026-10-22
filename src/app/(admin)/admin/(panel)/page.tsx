@@ -9,7 +9,7 @@ type Stats = { total: number; new: number; last_30_days: number; by_type: Record
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
   const user = await requireStaff();
-  if (!can.backOffice(user)) redirect("/admin/cases");
+  if (!can.backOffice(user)) redirect(can.partner(user) ? "/admin/work" : "/admin/cases");
   const sp = await searchParams;
   const db = await createSessionClient();
 

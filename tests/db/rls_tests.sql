@@ -816,6 +816,158 @@ set role authenticated;
 select t.ok((select count(*) >= 1 from public.ai_usage), 'super admin sees AI usage (cost control)');
 reset role;
 
+-- =====================================================================
+-- PARTNERS (planners & labs), WORK ORDERS, BILLS, PAYMENTS
+-- =====================================================================
+insert into public.partners (id, kind, name, currency) values
+  ('00000000-0000-0000-0000-0000000000f1', 'planner', 'Dr. Planner Clinic', 'USD'),
+  ('00000000-0000-0000-0000-0000000000f2', 'lab', 'Aligner Lab One', 'USD'),
+  ('00000000-0000-0000-0000-0000000000f3', 'lab', 'Lab Two', 'USD');
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000e1', 'planner1@test.local'),
+  ('00000000-0000-0000-0000-0000000000e2', 'lab1@test.local'),
+  ('00000000-0000-0000-0000-0000000000e3', 'lab2@test.local');
+update public.profiles set partner_id = '00000000-0000-0000-0000-0000000000f1' where id = '00000000-0000-0000-0000-0000000000e1';
+update public.profiles set partner_id = '00000000-0000-0000-0000-0000000000f2' where id = '00000000-0000-0000-0000-0000000000e2';
+update public.profiles set partner_id = '00000000-0000-0000-0000-0000000000f3' where id = '00000000-0000-0000-0000-0000000000e3';
+insert into public.user_roles (user_id, role) values
+  ('00000000-0000-0000-0000-0000000000e1', 'planner'),
+  ('00000000-0000-0000-0000-0000000000e2', 'lab'),
+  ('00000000-0000-0000-0000-0000000000e3', 'lab');
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ declare v_case uuid; v_no text; begin
+  select id into v_case from public.cases where patient_ref = 'P-002';
+  insert into public.case_assignments (case_id, partner_id, kind, title, cost_amount, currency)
+    values (v_case, '00000000-0000-0000-0000-0000000000f1', 'planning', 'Digital setup, both arches', 50, 'USD') returning order_no into v_no;
+  perform t.ok(v_no ~ '^WO-[0-9]{2}-[0-9]{5}$', 'case manager sends a planning work order (' || v_no || ')');
+  insert into public.case_assignments (case_id, partner_id, kind, title, cost_amount, currency)
+    values (v_case, '00000000-0000-0000-0000-0000000000f2', 'production', '20 aligners + retainer', 300, 'USD');
+  begin
+    insert into public.case_assignments (case_id, partner_id, kind, title) values (v_case, '00000000-0000-0000-0000-0000000000f1', 'production', 'x');
+    perform t.ok(false, 'kind mismatch');
+  exception when invalid_parameter_value then perform t.ok(true, 'production orders can only go to labs, planning to planners'); end;
+  perform t.ok((select count(*) = 1 from public.case_events where case_id = v_case and kind = 'internal' and body like 'Work order WO-%planning%'), 'work order logged on the case as an internal event');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000e1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_assignments), 'planner sees only his own work order');
+select t.ok((select count(*) = 0 from public.cases), 'planner cannot read the cases table (clinic prices, agent…)');
+select t.ok((select count(*) = 0 from public.case_invoices) and (select count(*) = 0 from public.case_payments) and (select count(*) = 0 from public.case_payment_claims), 'planner cannot see invoices or payments');
+select t.ok((select count(*) = 1 from public.partners), 'planner sees only his own partner record');
+select t.ok((select count(*) = 0 from public.content_section_translations where variant = 'draft'), 'planner cannot read draft website content');
+select t.ok((select count(*) = 0 from public.cash_entries), 'planner cannot see the cash book');
+do $$ declare v_id uuid; v_case uuid; j json; begin
+  select id, case_id into v_id, v_case from public.case_assignments;
+  j := public.work_order_brief(v_id);
+  perform t.ok(j ->> 'case_code' like 'RK-EG-%' and j ->> 'treating_doctor' = 'Dr. Hany' and j ->> 'patient_ref' = 'P-002', 'planner gets the clinical brief of his case');
+  perform t.ok(public.work_order_brief((select id from public.case_assignments where false limit 1)) is null, 'no brief without a work order');
+  insert into public.case_files (case_id, storage_path, filename, size_bytes, category, is_deliverable)
+    values (v_case, v_case || '/setup.stl', 'setup.stl', 2000, 'payment_proof', true);
+  perform t.ok((select internal and not is_deliverable and category = 'other' from public.case_files where filename = 'setup.stl'), 'partner uploads stay internal (not sent to the agent)');
+  perform t.ok((select count(*) = 0 from public.case_files where category = 'payment_proof'), 'partner cannot see payment proofs');
+  update public.case_assignments set cost_amount = 9999;
+  perform t.ok((select cost_amount = 50 from public.case_assignments), 'partner cannot change the agreed cost');
+  perform t.ok(public.partner_work_action(v_id, 'accept') = 'accepted', 'planner accepts the work order');
+  perform t.ok(public.partner_work_action(v_id, 'complete', 'Setup ready, 18 steps') = 'completed', 'planner completes the work order');
+  begin
+    perform public.partner_work_action(v_id, 'ship');
+    perform t.ok(false, 'planning cannot be shipped');
+  exception when invalid_parameter_value then perform t.ok(true, 'planning orders have no shipping step'); end;
+  insert into public.assignment_events (assignment_id, body, author_id) values (v_id, 'Please check the IPR on 3-4', auth.uid());
+  perform t.ok((select count(*) >= 3 from public.assignment_events where assignment_id = v_id), 'work order keeps its status history and messages');
+end $$;
+-- bill
+do $$ declare v_bill uuid; v_id uuid; r record; begin
+  select id into v_id from public.case_assignments;
+  insert into public.partner_bills (partner_id, partner_ref, currency, status) values ('00000000-0000-0000-0000-0000000000f2', 'INV-77', 'USD', 'approved') returning id into v_bill;
+  insert into public.partner_bill_lines (bill_id, assignment_id, description, qty, unit_price) values (v_bill, v_id, 'Digital setup', 1, 50);
+  select * into r from public.partner_bills where id = v_bill;
+  perform t.ok(r.partner_id = '00000000-0000-0000-0000-0000000000f1' and r.status = 'submitted' and r.total = 50 and r.bill_no ~ '^PB-', 'planner submits a bill for his completed order (own partner, awaiting review, total 50)');
+  insert into public.partner_bills (currency) values ('USD') returning id into v_bill;
+  begin
+    insert into public.partner_bill_lines (bill_id, assignment_id, description, unit_price) values (v_bill, v_id, 'again', 50);
+    perform t.ok(false, 'double billing');
+  exception when invalid_parameter_value then perform t.ok(true, 'a work order cannot be billed twice'); end;
+  delete from public.partner_bills where id = v_bill;
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000e2');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_assignments where kind = 'production'), 'lab sees only its production order');
+select t.ok((select count(*) = 0 from public.partner_bills), 'lab cannot see the planner bills');
+do $$ begin
+  perform public.partner_work_action((select id from public.case_assignments where kind = 'planning' limit 1), 'accept');
+  perform t.ok(false, 'lab cannot act on planner order');
+exception when insufficient_privilege then perform t.ok(true, 'a lab cannot act on another partner''s work order'); end $$;
+do $$ declare v_id uuid; begin
+  select id into v_id from public.case_assignments;
+  perform public.partner_work_action(v_id, 'accept');
+  perform public.partner_work_action(v_id, 'ship', 'Box 1/1', 'DHL', 'DHL123');
+  perform t.ok((select status = 'shipped' and tracking_no = 'DHL123' and shipped_at is not null from public.case_assignments where id = v_id), 'lab ships the production order with tracking');
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000e3');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_assignments) and (select count(*) = 0 from public.case_files), 'a lab without orders sees no cases or files');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_files where filename = 'setup.stl'), 'agent does not see the partner file before RUKN sends it');
+select t.ok((select count(*) = 0 from public.case_assignments) and (select count(*) = 0 from public.partners), 'agent cannot see partners or work orders');
+select t.ok((select count(*) = 0 from public.case_events where kind = 'internal'), 'agent does not see work-order events');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+do $$ declare v_bill uuid; usd uuid; v_pay uuid; begin
+  select id into usd from public.cash_accounts where name = 'USD cash box';
+  update public.case_files set is_deliverable = true where filename = 'setup.stl';
+  perform t.ok((select not internal from public.case_files where filename = 'setup.stl'), 'sending a partner file to the agent makes it visible');
+  select id into v_bill from public.partner_bills where status = 'submitted';
+  perform public.review_partner_bill(v_bill, 'approve', 'OK');
+  perform t.ok((select status = 'approved' from public.partner_bills where id = v_bill), 'case manager approves the bill');
+  begin
+    insert into public.partner_payments (partner_id, bill_id, amount, currency, cash_account_id) values ('00000000-0000-0000-0000-0000000000f1', v_bill, 100000, 'USD', usd);
+    perform t.ok(false, 'overdraft');
+  exception when invalid_parameter_value then perform t.ok(true, 'a partner payment cannot exceed the cash box balance'); end;
+  insert into public.partner_payments (partner_id, bill_id, amount, currency, cash_account_id) values ('00000000-0000-0000-0000-0000000000f1', v_bill, 30, 'USD', usd) returning id into v_pay;
+  perform t.ok((select count(*) = 1 from public.cash_entries where partner_payment_id = v_pay and direction = 'out' and category = 'planning' and party_name = 'Dr. Planner Clinic'),
+               'partner payment creates a payment voucher in the cash box');
+  begin
+    update public.cash_entries set voided = true, void_reason = 'x' where partner_payment_id = v_pay;
+    perform t.ok(false, 'direct void');
+  exception when insufficient_privilege then perform t.ok(true, 'the linked voucher can only be voided through the payment'); end;
+  begin
+    update public.partner_bills set status = 'void' where id = v_bill;
+    perform t.ok(false, 'void with payments');
+  exception when invalid_parameter_value then perform t.ok(true, 'a paid bill cannot be voided before its payments'); end;
+  update public.partner_payments set voided = true, void_reason = 'wrong box' where id = v_pay;
+  perform t.ok((select voided from public.cash_entries where partner_payment_id = v_pay), 'voiding the payment voids its cash voucher');
+  insert into public.partner_payments (partner_id, bill_id, amount, currency, cash_account_id) values ('00000000-0000-0000-0000-0000000000f1', v_bill, 30, 'USD', usd);
+end $$;
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_files where filename = 'setup.stl'), 'agent sees the plan file once RUKN sends it');
+reset role;
+
+select t.login('00000000-0000-0000-0000-0000000000e1');
+set role authenticated;
+select t.ok((select count(*) = 2 from public.partner_payments) and (select sum(amount) filter (where not voided) = 30 from public.partner_payments), 'planner sees his payments (for his statement)');
+do $$ begin
+  insert into public.partner_payments (partner_id, amount, currency) values ('00000000-0000-0000-0000-0000000000f1', 1, 'USD');
+  perform t.ok(false, 'partner cannot pay himself');
+exception when insufficient_privilege then perform t.ok(true, 'a partner cannot record payments'); end $$;
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

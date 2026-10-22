@@ -4,6 +4,7 @@ import { createSessionClient } from "@/lib/admin";
 import { peopleWithRole, profileMap } from "@/lib/case-data";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { loadStatements, mapText } from "@/lib/statement";
+import { CURRENCY_AR, groupByCurrency } from "@/lib/currency-groups";
 import { loadReceivables } from "@/lib/finance";
 import { isAiConfigured } from "@/lib/ai";
 import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
@@ -27,6 +28,9 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
     staff ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
   ]) : [{ data: [] }, { rows: [] as Awaited<ReturnType<typeof loadReceivables>>["rows"] }, { data: [] }];
   const noticeList = (notices ?? []) as Notice[];
+  // pending first, then the 10 latest — older ones stay out of the way
+  const recentNotices = [...noticeList.filter((n) => n.status === "pending"), ...noticeList.filter((n) => n.status !== "pending").slice(0, 10)];
+  const olderNotices = noticeList.filter((n) => !recentNotices.includes(n));
   const nIds = { inv: [...new Set(noticeList.map((n) => n.invoice_id).filter(Boolean))] as string[], pay: [...new Set(noticeList.map((n) => n.payment_id).filter(Boolean))] as string[] };
   const nCases = [...new Set(noticeList.map((n) => n.case_id).filter(Boolean))] as string[];
   const [{ data: nInv }, { data: nPay }, { data: nCase }] = await Promise.all([
@@ -76,34 +80,43 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
               <PaymentNoticeForm agentId={agent} invoices={openInvoices} defaultCurrency={owes[0]?.[0] ?? openInvoices[0]?.currency ?? "USD"} />
             </section>
           ) : null}
-          <section className="panel">
-            <h2>{staff ? "Payment notices of this agent" : "Your payment notices"} · إشعارات الدفع</h2>
-            <NoticesTable notices={noticeList} staff={staff} boxes={(boxes ?? []) as { id: string; name: string; currency: string }[]} showCase
-              caseCodes={new Map((nCase ?? []).map((c) => [c.id as string, c.code as string]))} invoiceNos={new Map((nInv ?? []).map((i) => [i.id as string, i.invoice_no as string]))}
-              receiptNos={new Map((nPay ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]))} names={new Map([...people.entries()].map(([k, v]) => [k, v.name]))}
-              aiEnabled={staff && isAiConfigured()} />
-          </section>
-          <section className="panel">
-            <h2>Movements · الحركات</h2>
+
+          {groupByCurrency(st.lines, st.opening).map((g) => {
+            const dr = g.lines.reduce((a, l) => a + l.debit, 0); const cr = g.lines.reduce((a, l) => a + l.credit, 0);
+            const closing = g.lines.length ? g.lines[g.lines.length - 1].balance : g.opening;
+            return (
+          <section className="panel" key={g.currency}>
+            <h2>Movements in {g.currency} · حركات الحساب — {CURRENCY_AR[g.currency] ?? g.currency}</h2>
             <div className="table-scroll">
               <table className="data">
                 <thead><tr><th>Date</th><th>Document</th><th>Case</th><th className="num">Debit · مدين</th><th className="num">Credit · دائن</th><th className="num">Balance · الرصيد</th></tr></thead>
                 <tbody>
-                  {st.opening.size ? <tr><td className="small">{sp.from ? fmtDay(sp.from) : ""}</td><td colSpan={4}><strong>Opening balance · رصيد سابق</strong></td><td className="num"><strong>{mapText(st.opening, fmtMoney)}</strong></td></tr> : null}
-                  {st.lines.length === 0 ? <tr><td colSpan={6} className="empty">No invoices, payments or journal entries in this period.</td></tr> : null}
-                  {st.lines.map((l) => (
-                    <tr key={`${l.kind}-${l.doc_id}`}>
+                  {g.opening ? <tr><td className="small">{sp.from ? fmtDay(sp.from) : ""}</td><td colSpan={4}><strong>Opening balance · رصيد سابق</strong></td><td className="num"><strong>{fmtMoney(g.opening, g.currency)}</strong></td></tr> : null}
+                  {g.lines.map((l) => (
+                    <tr key={`${l.kind}-${l.doc_id}-${l.currency}`}>
                       <td className="small nowrap">{fmtDay(l.date)}</td>
-                      <td className="mono nowrap">{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/payment/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted">{l.note}</div> : null}</td>
+                      <td className="mono" style={{ maxWidth: 340 }}>{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/payment/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted" style={{ fontFamily: "inherit", whiteSpace: "normal" }}>{l.note}</div> : null}</td>
                       <td className="small">{l.case_id ? <><Link className="mono" href={`/admin/cases/${l.case_id}`}>{l.code}</Link><div>{l.clinic}</div></> : "—"}</td>
                       <td className="num nowrap">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
                       <td className="num nowrap" style={{ color: "#067647" }}>{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>
                       <td className="num nowrap"><strong>{fmtMoney(l.balance, l.currency)}</strong></td>
                     </tr>
                   ))}
+                  <tr className="total-row"><td /><td colSpan={2}><strong>Total · الإجمالي ({g.currency})</strong></td><td className="num nowrap"><strong>{fmtMoney(dr, g.currency)}</strong></td><td className="num nowrap"><strong>{fmtMoney(cr, g.currency)}</strong></td><td className="num nowrap"><strong style={{ color: closing > 0 ? "#b42318" : "#067647" }}>{fmtMoney(closing, g.currency)}</strong></td></tr>
                 </tbody>
               </table>
             </div>
+          </section>
+            );
+          })}
+          {st.lines.length === 0 && !st.opening.size ? <section className="panel"><p className="small muted">No invoices, payments or journal entries in this period.</p></section> : null}
+          <section className="panel">
+            <h2>{staff ? "Payment notices of this agent" : "Your payment notices"} · إشعارات الدفع</h2>
+            <NoticesTable notices={recentNotices} staff={staff} boxes={(boxes ?? []) as { id: string; name: string; currency: string }[]} showCase
+              caseCodes={new Map((nCase ?? []).map((c) => [c.id as string, c.code as string]))} invoiceNos={new Map((nInv ?? []).map((i) => [i.id as string, i.invoice_no as string]))}
+              receiptNos={new Map((nPay ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]))} names={new Map([...people.entries()].map(([k, v]) => [k, v.name]))}
+              aiEnabled={staff && isAiConfigured()} />
+            {olderNotices.length ? <p className="small muted" style={{ marginTop: 8 }}>+ {olderNotices.length} older notice(s) — see each case page or the receipts in the statement.</p> : null}
           </section>
         </>
       ) : (

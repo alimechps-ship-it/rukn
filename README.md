@@ -74,6 +74,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
   - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The finance manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.
   - **Payments on account / advances** (migration `20261022001600_agent_account_payments.sql`): from *My account* the agent sends a payment notice for **any** of his open invoices or **on account / in advance** (no case); his cases page shows the balance due with a *Send a payment* button. The finance manager confirms it as usual (receipt `RC-` on the agent's account, into a cash box) or rejects it. Proofs without a case are stored privately under `case-files/agent/<agent id>/`.
+  - **Statements per currency**: agent and partner statements (screen and print) show one table per currency, each with its own opening balance, totals and closing balance.
   - **Account statements**: every agent sees *My account* (invoices, payments, balance, pending notices; printable); case staff see all agents.
 - **AI tools** (optional, migration `20261022001000_ai.sql`, env `ANTHROPIC_API_KEY`):
   - **AI assistant** (case staff; the case manager gets only the case tools, finance gets all): questions in Arabic/English answered from live data through read-only tools (cases, stats, receivables, agent balances, cash boxes, person accounts, payment notices). Queries run with the user's session, so RLS applies. Daily limit per user (`AI_DAILY_LIMIT`), every request logged in `ai_usage`.
@@ -101,6 +102,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
 - **Journal entries · القيود** (migration `20261022001500_journal_entries.sql`, Finance → Journal entries): simple entries `JV-` — **one debit account, one credit account** (قيد بسيط), no cash movement, printable journal voucher with the amount in words.
   - Accounts: agents, labs / clinics, and general accounts (chart: 4100 other services revenue, 4200 discount earned, 4900 other income, 5100 discount allowed, 5200 other expenses, 5300 bad debts, 6100 currency differences, 3100 opening balances — finance can add / rename / close accounts). Each general account shows its balance and movements.
   - Effects: agent — debit adds to what he owes, credit reduces it; lab / clinic — credit adds to what RUKN owes it, debit reduces it. A side can point at the agent's issued invoice / the partner's approved bill (same currency): the document's balance changes too.
+  - **Same account, two currencies**: an agent / partner / account may be on both sides only when the currencies differ — this converts its balance from one currency to another (e.g. Dr agent 100 USD / Cr agent 5,000 EGP); migration `20261023001700_journal_same_account.sql`.
   - **Currencies**: each side has its own currency; when they differ the credit amount follows the automatic exchange rate, or a rate / amount the user types (stored as auto / manual).
   - Quick patterns: discount allowed, discount earned, charge an agent for other services, extra charge from a lab, currency differences, offset lab ↔ agent, move a balance between agents; ⇄ swaps the sides.
   - Shown in agent and partner statements and balances; the agent / partner sees and prints his own entries. Entries are never edited or deleted — voided with a reason. This replaces the earlier “adjustments” (the migration removes them if installed).
@@ -202,10 +204,10 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (291 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (292 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Payments on account / advances** (12 checks: balance banner, My account form, advance without a case, invoice notice from the account page, finance confirmation into a box, statement, receipt print): see `tests/e2e/account_payments_flow.py`.
-- **Journal entries** (13 checks: templates, discount on an invoice, discount earned, offset across currencies with edited rate, ledger account statement, agent statement & print, void): see `tests/e2e/journal_flow.py`.
+- **Journal entries** (18 checks: templates, discount on an invoice, discount earned, offset across currencies with edited rate, ledger account statement, agent statement & print, void): see `tests/e2e/journal_flow.py`.
 - **Cash vouchers with labs & clinics** (7 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.
 - **Exchange rates** (14 checks: automatic update, locked manual rate, transfers with automatic / edited rate / typed amount, access): see `tests/e2e/fx_flow.py` (run the app with `FX_API_URL=http://localhost:54400/fx` and the mock server).
 - **Case manager / finance separation** (23 checks: menus and pages denied to the case manager, dispatch order → finance queue → priced invoice, no amounts visible to operations): see `tests/e2e/dispatch_flow.py`. The money e2e tests sign in with `FINANCE_EMAIL` / `FINANCE_PASSWORD`.

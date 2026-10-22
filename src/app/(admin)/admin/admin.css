@@ -255,3 +255,4 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .jv-side.cr h3 { color: #067647; }
 .jv-swap { align-self: center; }
 @media (max-width: 860px) { .jv-sides { grid-template-columns: 1fr; } .jv-swap { justify-self: center; } }
+table.data tr.total-row td { background: #f6f8fb; border-top: 2px solid var(--line); }

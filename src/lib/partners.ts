@@ -1,6 +1,6 @@
 import "server-only";
 import type { Db } from "./admin";
-import { accountNames, partnerEffect, type JournalEntry } from "./journal";
+import { accountNames, partnerEffects, type JournalEntry } from "./journal";
 
 export const PARTNER_KINDS: Record<string, { en: string; ar: string; work: "planning" | "production" }> = {
   planner: { en: "Treatment planner", ar: "مخطط علاجي (طبيب / عيادة)", work: "planning" },
@@ -65,9 +65,10 @@ export async function partnerBalances(db: Db, partnerId?: string) {
     else add(t.pending, b.currency as string, Number(b.total));
   }
   for (const p of pays ?? []) { const t = P(p.partner_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.owed, p.currency as string, -Number(p.amount)); }
-  for (const e of (adjs ?? []) as JournalEntry[]) for (const pid of [e.dr_partner_id, e.cr_partner_id]) {
+  for (const e of (adjs ?? []) as JournalEntry[]) for (const pid of new Set([e.dr_partner_id, e.cr_partner_id])) {
     if (!pid || (partnerId && pid !== partnerId)) continue;
-    const eff = partnerEffect(e, pid)!; const t = P(pid); add(t.journal, eff.currency, eff.amount); add(t.owed, eff.currency, eff.amount);
+    const t = P(pid);
+    for (const eff of partnerEffects(e, pid)) { add(t.journal, eff.currency, eff.amount); add(t.owed, eff.currency, eff.amount); }
   }
   for (const r of refunds ?? []) { const t = P(r.partner_id as string); add(t.paid, r.currency as string, -Number(r.amount)); add(t.owed, r.currency as string, Number(r.amount)); }
   for (const w of wos ?? []) {
@@ -99,13 +100,12 @@ export async function partnerStatement(db: Db, partnerId: string, from?: string,
     // Money the partner returned to RUKN (receipt voucher): adds back to what RUKN owes / reduces an advance
     ...(refunds ?? []).map((r) => ({ date: r.entry_date as string, kind: "refund" as const, doc: r.entry_no as string, id: r.id as string, ref: (r.reference as string) ?? null, currency: r.currency as string, billed: Number(r.amount), paid: 0, note: null, at: String(r.created_at ?? "") })),
     // Journal entries: credit to the partner → like a bill (RUKN owes more); debit → like a payment
-    ...jEntries.map((e) => {
-      const eff = partnerEffect(e, partnerId)!;
+    ...jEntries.flatMap((e) => partnerEffects(e, partnerId).map((eff) => {
       const other = names.side(e, eff.side === "dr" ? "cr" : "dr");
       return { date: e.entry_date, kind: "journal" as const, doc: e.entry_no, id: e.id, ref: e.reference, currency: eff.currency,
         billed: eff.side === "cr" ? Number(e.cr_amount) : 0, paid: eff.side === "dr" ? Number(e.dr_amount) : 0,
-        note: `Journal · قيد — ${eff.side === "dr" ? "Cr" : "Dr"} ${other.en}${other.ar ? ` · ${other.ar}` : ""}${e.description ? ` — ${e.description}` : ""}`, at: e.created_at };
-    }),
+        note: `Journal · قيد — ${eff.side === "dr" ? "Cr" : "Dr"} ${other.en}${other.ar ? ` · ${other.ar}` : ""}${e.dr_currency !== e.cr_currency ? ` (${e.dr_amount} ${e.dr_currency} ⇄ ${e.cr_amount} ${e.cr_currency})` : ""}${e.description ? ` — ${e.description}` : ""}`, at: e.created_at };
+    })),
   ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
   const opening = new Map<string, number>(); const bal = new Map<string, number>();
   const lines: PartnerLine[] = [];

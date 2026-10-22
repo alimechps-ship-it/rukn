@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CURRENCY_AR, groupByCurrency } from "@/lib/currency-groups";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient } from "@/lib/admin";
 import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
@@ -46,27 +47,35 @@ export default async function PartnerStatementPage({ searchParams }: { searchPar
         <div className="stat"><div className="k">Balance due to you · الرصيد المستحق</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6, color: "#b42318" }}>{mm(b?.owed, fmtMoney)}</div></div>
         <div className="stat"><div className="k">Bills awaiting review</div><div className="v" style={{ fontSize: "1.05rem", paddingTop: 6 }}>{mm(b?.pending, fmtMoney)}</div></div>
       </div>
-      <section className="panel">
+      {groupByCurrency(st.lines, st.opening).map((g) => {
+        const bi = g.lines.reduce((a, l) => a + l.billed, 0); const pa = g.lines.reduce((a, l) => a + l.paid, 0);
+        const closing = g.lines.length ? g.lines[g.lines.length - 1].balance : g.opening;
+        return (
+      <section className="panel" key={g.currency}>
+        <h2>Account in {g.currency} · الحساب — {CURRENCY_AR[g.currency] ?? g.currency}</h2>
         <div className="table-scroll">
           <table className="data">
-            <thead><tr><th>Date</th><th>Document</th><th>Reference</th><th className="num">Billed · فواتير</th><th className="num">Paid · مدفوع</th><th className="num">Balance · الرصيد</th></tr></thead>
+            <thead><tr><th>Date</th><th>Document</th><th>Reference</th><th className="num">Billed · دائن</th><th className="num">Paid · مدين</th><th className="num">Balance · الرصيد</th></tr></thead>
             <tbody>
-              {st.opening.size ? <tr><td /><td colSpan={4}><strong>Opening balance</strong></td><td className="num"><strong>{mm(st.opening, fmtMoney)}</strong></td></tr> : null}
-              {st.lines.length === 0 ? <tr><td colSpan={6} className="empty">No approved bills or payments in this period.</td></tr> : null}
-              {st.lines.map((l) => (
-                <tr key={`${l.kind}-${l.id}`}>
+              {g.opening ? <tr><td /><td colSpan={4}><strong>Opening balance · رصيد سابق</strong></td><td className="num"><strong>{fmtMoney(g.opening, g.currency)}</strong></td></tr> : null}
+              {g.lines.map((l) => (
+                <tr key={`${l.kind}-${l.id}-${l.currency}`}>
                   <td className="small nowrap">{fmtDay(l.date)}</td>
-                  <td className="mono nowrap"><a href={l.kind === "bill" ? `/admin/print/partner-bill/${l.id}` : l.kind === "refund" ? `/admin/print/cash/${l.id}` : l.kind === "journal" ? `/admin/print/journal/${l.id}` : `/admin/print/partner-payment/${l.id}`} target="_blank" rel="noopener">{l.doc}</a><div className="small muted">{l.kind === "bill" ? "Bill" : l.kind === "refund" ? "Returned to RUKN · مرتجع" : l.kind === "journal" ? (l.note ?? "Journal entry") : `Payment · ${PAYMENT_METHODS[l.note ?? ""]?.en ?? ""}`}</div></td>
+                  <td className="mono" style={{ maxWidth: 340 }}><a href={l.kind === "bill" ? `/admin/print/partner-bill/${l.id}` : l.kind === "refund" ? `/admin/print/cash/${l.id}` : l.kind === "journal" ? `/admin/print/journal/${l.id}` : `/admin/print/partner-payment/${l.id}`} target="_blank" rel="noopener">{l.doc}</a><div className="small muted">{l.kind === "bill" ? "Bill" : l.kind === "refund" ? "Returned to RUKN · مرتجع" : l.kind === "journal" ? (l.note ?? "Journal entry") : `Payment · ${PAYMENT_METHODS[l.note ?? ""]?.en ?? ""}`}</div></td>
                   <td className="small">{l.ref ?? ""}</td>
                   <td className="num nowrap">{l.billed ? fmtMoney(l.billed, l.currency) : ""}</td>
                   <td className="num nowrap" style={{ color: "#067647" }}>{l.paid ? fmtMoney(l.paid, l.currency) : ""}</td>
                   <td className="num nowrap"><strong>{fmtMoney(l.balance, l.currency)}</strong></td>
                 </tr>
               ))}
+              <tr className="total-row"><td /><td colSpan={2}><strong>Total · الإجمالي ({g.currency})</strong></td><td className="num nowrap"><strong>{fmtMoney(bi, g.currency)}</strong></td><td className="num nowrap"><strong>{fmtMoney(pa, g.currency)}</strong></td><td className="num nowrap"><strong>{fmtMoney(closing, g.currency)}</strong></td></tr>
             </tbody>
           </table>
         </div>
       </section>
+        );
+      })}
+      {st.lines.length === 0 && !st.opening.size ? <section className="panel"><p className="small muted">No approved bills or payments in this period.</p></section> : null}
     </>
   );
 }

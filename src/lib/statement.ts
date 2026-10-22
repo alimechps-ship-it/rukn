@@ -1,8 +1,9 @@
 import "server-only";
 import type { Db } from "./admin";
-import { accountNames, agentEffect, type JournalEntry } from "./journal";
+import { accountNames, agentEffects, type JournalEntry } from "./journal";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const fmtN = (n: number) => Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const add = (m: Map<string, number>, k: string, v: number) => m.set(k, r2((m.get(k) ?? 0) + v));
 
 export interface StatementLine {
@@ -46,9 +47,10 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
   for (const i of invs ?? []) { const t = T(caseMap.get(i.case_id as string)!.agent_id as string); add(t.invoiced, i.currency as string, Number(i.total)); add(t.balance, i.currency as string, Number(i.total)); }
   for (const p of pays ?? []) { const t = T(p.agent_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.balance, p.currency as string, -Number(p.amount)); }
   // Journal entries: debit to an agent adds to what he owes, credit reduces it (an entry between two agents touches both)
-  for (const e of journal) for (const ag of [e.dr_agent_id, e.cr_agent_id]) {
+  for (const e of journal) for (const ag of new Set([e.dr_agent_id, e.cr_agent_id])) {
     if (!ag || (opts.agent && ag !== opts.agent)) continue;
-    const eff = agentEffect(e, ag)!; const t = T(ag); add(t.journal, eff.currency, eff.amount); add(t.balance, eff.currency, eff.amount);
+    const t = T(ag);
+    for (const eff of agentEffects(e, ag)) { add(t.journal, eff.currency, eff.amount); add(t.balance, eff.currency, eff.amount); }
   }
   for (const n of claims ?? []) add(T(n.agent_id as string).pending, n.currency as string, Number(n.amount));
 
@@ -71,16 +73,14 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
           currency: p.currency as string, debit: 0, credit: Number(p.amount),
           note: [onAccount ? "On account / advance · دفعة على الحساب" : null, (p.reference as string | null) ?? null].filter(Boolean).join(" · ") || null, at: String(p.created_at ?? "") };
       }),
-      ...journal.flatMap((e) => {
-        const eff = agentEffect(e, opts.agent!);
-        if (!eff) return [];
+      ...journal.flatMap((e) => agentEffects(e, opts.agent!).map((eff) => {
         const inv = eff.side === "dr" ? e.dr_invoice_id : e.cr_invoice_id;
         const c = inv ? caseMap.get((invs ?? []).find((x) => x.id === inv)?.case_id as string) : undefined;
         const other = names.side(e, eff.side === "dr" ? "cr" : "dr");
-        return [{ date: e.entry_date, kind: "journal" as const, doc: e.entry_no, doc_id: e.id, case_id: (c?.id as string) ?? "", code: (c?.code as string) ?? "", clinic: (c?.clinic_name as string) ?? "",
+        return { date: e.entry_date, kind: "journal" as const, doc: e.entry_no, doc_id: e.id, case_id: (c?.id as string) ?? "", code: (c?.code as string) ?? "", clinic: (c?.clinic_name as string) ?? "",
           currency: eff.currency, debit: eff.side === "dr" ? Number(e.dr_amount) : 0, credit: eff.side === "cr" ? Number(e.cr_amount) : 0,
-          note: `Journal · قيد — ${eff.side === "dr" ? "Cr" : "Dr"} ${other.en}${other.ar ? ` · ${other.ar}` : ""}${e.description ? ` — ${e.description}` : ""}`, at: e.created_at }];
-      }),
+          note: `Journal · قيد — ${eff.side === "dr" ? "Cr" : "Dr"} ${other.en}${other.ar ? ` · ${other.ar}` : ""}${e.dr_currency !== e.cr_currency ? ` (${fmtN(e.dr_amount)} ${e.dr_currency} ⇄ ${fmtN(e.cr_amount)} ${e.cr_currency})` : ""}${e.description ? ` — ${e.description}` : ""}`, at: e.created_at };
+      })),
     ].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.doc < b.doc ? -1 : 1)); // same day → in the order the documents were made
     const bal = new Map<string, number>();
     for (const l of raw) {

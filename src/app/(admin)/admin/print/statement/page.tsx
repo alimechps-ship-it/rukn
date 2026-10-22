@@ -4,6 +4,7 @@ import { createSessionClient } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { loadStatements, mapText } from "@/lib/statement";
+import { CURRENCY_AR, groupByCurrency } from "@/lib/currency-groups";
 import { PrintShell } from "../PrintShell";
 import { loadCompany } from "../company";
 
@@ -37,23 +38,33 @@ export default async function PrintStatement({ searchParams }: { searchParams: P
         <div className="s"><b style={{ fontSize: "11pt", color: "#b42318" }}>{t ? mapText(t.balance, fmtMoney) : "—"}</b><span>Balance due · الرصيد المستحق</span></div>
         <div className="s"><b style={{ fontSize: "11pt" }}>{t ? mapText(t.pending, fmtMoney) : "—"}</b><span>Awaiting confirmation · قيد التأكيد</span></div>
       </div>
+      {groupByCurrency(st.lines, st.opening).map((g) => {
+        const dr = g.lines.reduce((a, l) => a + l.debit, 0); const cr = g.lines.reduce((a, l) => a + l.credit, 0);
+        const closing = g.lines.length ? g.lines[g.lines.length - 1].balance : g.opening;
+        return (
+      <div className="section" key={g.currency}>
+      <h2 style={{ margin: "10px 0 4px", fontSize: "11pt" }}>{g.currency} account · <span className="ar">الحساب — {CURRENCY_AR[g.currency] ?? g.currency}</span></h2>
       <table className="t">
         <thead><tr><th>Date · التاريخ</th><th>Document · المستند</th><th>Case · الحالة</th><th className="num">Debit · مدين</th><th className="num">Credit · دائن</th><th className="num">Balance · الرصيد</th></tr></thead>
         <tbody>
-          {st.opening.size ? <tr><td>{st.from ? fmtDay(st.from) : ""}</td><td colSpan={4}><strong>Opening balance · رصيد سابق</strong></td><td className="num"><strong>{mapText(st.opening, fmtMoney)}</strong></td></tr> : null}
-          {st.lines.map((l) => (
-            <tr key={`${l.kind}-${l.doc_id}`}>
+          {g.opening ? <tr><td>{st.from ? fmtDay(st.from) : ""}</td><td colSpan={4}><strong>Opening balance · رصيد سابق</strong></td><td className="num"><strong>{fmtMoney(g.opening, g.currency)}</strong></td></tr> : null}
+          {g.lines.map((l) => (
+            <tr key={`${l.kind}-${l.doc_id}-${l.currency}`}>
               <td style={{ whiteSpace: "nowrap" }}>{fmtDay(l.date)}</td>
-              <td style={{ fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap" }}>{l.doc}<div style={{ fontFamily: "inherit", fontSize: "8pt", color: "#526173" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : l.kind === "journal" ? "Journal · قيد" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
+              <td style={{ fontFamily: "ui-monospace, monospace", maxWidth: 260 }}><span style={{ whiteSpace: "nowrap" }}>{l.doc}</span><div style={{ fontFamily: "\"Inter Variable\", \"IBM Plex Sans Arabic\", sans-serif", fontSize: "8pt", color: "#526173", whiteSpace: "normal" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : l.kind === "journal" ? "Journal · قيد" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
               <td>{l.code}<div style={{ fontSize: "8.5pt", color: "#526173" }}>{l.clinic}</div></td>
               <td className="num">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
               <td className="num">{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>
               <td className="num"><strong>{fmtMoney(l.balance, l.currency)}</strong></td>
             </tr>
           ))}
-          {st.lines.length === 0 ? <tr><td colSpan={6} style={{ textAlign: "center" }}>No movements in this period.</td></tr> : null}
+          <tr><td /><td colSpan={2}><strong>Total · الإجمالي</strong></td><td className="num"><strong>{fmtMoney(dr, g.currency)}</strong></td><td className="num"><strong>{fmtMoney(cr, g.currency)}</strong></td><td className="num"><strong>{fmtMoney(closing, g.currency)}</strong></td></tr>
         </tbody>
       </table>
+      </div>
+        );
+      })}
+      {st.lines.length === 0 && !st.opening.size ? <p style={{ textAlign: "center" }}>No movements in this period.</p> : null}
       <div className="note">Payments awaiting confirmation are not included in the balance until RUKN confirms them. · الدفعات قيد التأكيد لا تُحتسب في الرصيد حتى تأكيدها.</div>
       <div className="sign two">
         <div>For RUKN · عن ركن<br /><strong style={{ color: "#1d2939" }}>{people.get(user.id)?.name}</strong></div>

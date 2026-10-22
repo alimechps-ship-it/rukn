@@ -25,15 +25,27 @@ export const TEMPLATES: { key: string; en: string; ar: string; dr: AccType | str
   { key: "fx_agent", en: "Currency difference (agent)", ar: "فروق عملة على مندوب", dr: "agent", cr: "6100", hint: "Swap the sides if the difference is in the agent's favour." },
   { key: "fx_partner", en: "Currency difference (lab / clinic)", ar: "فروق عملة مع معمل أو عيادة", dr: "6100", cr: "partner", hint: "Swap the sides if the difference is in RUKN's favour." },
   { key: "offset", en: "Offset: lab / clinic against agent", ar: "تقاص: شريك مقابل مندوب", dr: "partner", cr: "agent", hint: "What RUKN owes the partner is set off against what the agent owes RUKN." },
+  { key: "convert_agent", en: "Convert an agent's balance to another currency", ar: "تحويل عملة رصيد مندوب", dr: "agent", cr: "agent", hint: "Same agent on both sides, two currencies: e.g. Dr agent 100 USD / Cr agent 5,000 EGP turns an EGP debt into a USD debt." },
+  { key: "convert_partner", en: "Convert a lab / clinic balance to another currency", ar: "تحويل عملة رصيد شريك", dr: "partner", cr: "partner", hint: "Same partner on both sides, two currencies: e.g. Dr partner 5,000 EGP / Cr partner 100 USD turns what RUKN owes in EGP into USD." },
   { key: "transfer", en: "Move a balance between agents", ar: "نقل رصيد بين مندوبين", dr: "agent", cr: "agent", hint: "Dr the agent who takes the debt / Cr the agent who is released." },
 ];
 
-/** Effect of an entry on an agent's balance (what he owes RUKN), in the currency of that side. */
-export function agentEffect(e: JournalEntry, agentId: string): { amount: number; currency: string; side: "dr" | "cr" } | null {
-  if (e.dr_agent_id === agentId) return { amount: Number(e.dr_amount), currency: e.dr_currency, side: "dr" };
-  if (e.cr_agent_id === agentId) return { amount: -Number(e.cr_amount), currency: e.cr_currency, side: "cr" };
-  return null;
+type Eff = { amount: number; currency: string; side: "dr" | "cr" };
+/** Effects of an entry on an agent's balance (what he owes RUKN) — both sides when the same agent converts currencies. */
+export function agentEffects(e: JournalEntry, agentId: string): Eff[] {
+  const out: Eff[] = [];
+  if (e.dr_agent_id === agentId) out.push({ amount: Number(e.dr_amount), currency: e.dr_currency, side: "dr" });
+  if (e.cr_agent_id === agentId) out.push({ amount: -Number(e.cr_amount), currency: e.cr_currency, side: "cr" });
+  return out;
 }
+/** Effects on what RUKN owes a partner. */
+export function partnerEffects(e: JournalEntry, partnerId: string): Eff[] {
+  const out: Eff[] = [];
+  if (e.dr_partner_id === partnerId) out.push({ amount: -Number(e.dr_amount), currency: e.dr_currency, side: "dr" });
+  if (e.cr_partner_id === partnerId) out.push({ amount: Number(e.cr_amount), currency: e.cr_currency, side: "cr" });
+  return out;
+}
+
 /** Effect on what RUKN owes a partner. */
 export function partnerEffect(e: JournalEntry, partnerId: string): { amount: number; currency: string; side: "dr" | "cr" } | null {
   if (e.cr_partner_id === partnerId) return { amount: Number(e.cr_amount), currency: e.cr_currency, side: "cr" };

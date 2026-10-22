@@ -1164,7 +1164,10 @@ do $$ declare v_inv record; v_id uuid; v_disc uuid; v_earn uuid; v_fx uuid; n in
     insert into public.journal_entries (dr_type, dr_agent_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency)
     values ('agent', '00000000-0000-0000-0000-0000000000a1', 5, 'USD', 'agent', '00000000-0000-0000-0000-0000000000a1', 'USD');
     perform t.ok(false, 'same account must fail');
-  exception when invalid_parameter_value then perform t.ok(true, 'debit and credit accounts must differ'); end;
+  exception when invalid_parameter_value then perform t.ok(true, 'the same account in the same currency is refused'); end;
+  insert into public.journal_entries (dr_type, dr_agent_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency, fx_rate)
+  values ('agent', '00000000-0000-0000-0000-0000000000a2', 100, 'USD', 'agent', '00000000-0000-0000-0000-0000000000a2', 'EGP', 50) returning id into v_id;
+  perform t.ok((select cr_amount = 5000 from public.journal_entries where id = v_id), 'the same account is allowed in two currencies (convert 5000 EGP into 100 USD)');
   begin
     insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_agent_id, cr_currency, cr_invoice_id)
     values ('ledger', v_disc, 5, case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, 'agent', '00000000-0000-0000-0000-0000000000a1', case when v_inv.currency = 'USD' then 'EUR' else 'USD' end, v_inv.id);

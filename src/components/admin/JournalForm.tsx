@@ -112,6 +112,8 @@ export function JournalForm({ action, accounts, docs, templates, perUsd, preset 
         <input type="hidden" name={s} value={a?.key ?? ""} />
         <Picker id={`jv-${s}`} label={s === "dr" ? "Debit account · الحساب المدين" : "Credit account · الحساب الدائن"} accounts={accounts} value={a} onChange={(x) => setSide(s, x)} only={s === "dr" ? onlyDr : onlyCr} />
         {a ? <p className="small muted" style={{ margin: "-4px 0 8px" }}>→ {EFFECT[a.type][s]}</p> : null}
+        {s === "cr" && !a && dr ? <button type="button" className="btn secondary small" style={{ marginBottom: 8 }} onClick={() => { setCr(dr); setCrDoc(""); if (crCur === drCur) setCrCur(drCur === "USD" ? "EGP" : "USD"); setRate(null); setCrAmt(null); }}>= Same account in another currency · نفس الحساب بعملة أخرى</button> : null}
+        {s === "cr" && a && dr && a.key === dr.key ? <p className="small" style={{ margin: "-4px 0 8px", color: drCur === crCur ? "#b42318" : "#067647" }}>{drCur === crCur ? "Same account on both sides: choose a different currency for the credit side. · نفس الحساب يتطلب عملة مختلفة" : "Currency conversion of the same account · تحويل عملة لنفس الحساب"}</p> : null}
         {myDocs.length ? (
           <div className="field full"><label htmlFor={`jv-${s}-doc`}>{a?.type === "agent" ? "On invoice (optional) · على فاتورة" : "On bill (optional) · على فاتورة الشريك"}</label>
             <select id={`jv-${s}-doc`} name={`${s}_doc`} value={doc} onChange={(e) => {

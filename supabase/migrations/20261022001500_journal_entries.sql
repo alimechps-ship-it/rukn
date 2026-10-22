@@ -102,8 +102,10 @@ begin
     return new;
   end if;
 
-  if (new.dr_type = new.cr_type) and coalesce(new.dr_agent_id, new.dr_partner_id, new.dr_ledger_id) = coalesce(new.cr_agent_id, new.cr_partner_id, new.cr_ledger_id) then
-    raise exception 'The debit and the credit account must be different.' using errcode = '22023';
+  -- The same account on both sides is allowed only to convert its balance between two currencies.
+  if (new.dr_type = new.cr_type) and coalesce(new.dr_agent_id, new.dr_partner_id, new.dr_ledger_id) = coalesce(new.cr_agent_id, new.cr_partner_id, new.cr_ledger_id)
+     and new.dr_currency = new.cr_currency then
+    raise exception 'The same account on both sides is only allowed with two different currencies.' using errcode = '22023';
   end if;
 
   foreach side in array array['dr', 'cr'] loop

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LogIn } from "lucide-react";
 import { localizeHref, switchLocalePath, LOCALE_COOKIE } from "@/lib/i18n";
 import type { Language, NavItem } from "@/lib/types";
 
@@ -43,6 +44,9 @@ export function Header({ locale, logoSrc, logoAlt, nav, languages, cta, labels }
     return pathname === full || (full !== `/${locale}` && pathname.startsWith(`${full}/`));
   };
 
+  const loginLabel = locale === "ar" ? "دخول الشركاء" : "Partner login";
+  const loginTitle = locale === "ar" ? "دخول المناديب والفريق" : "Sign in — agents & team";
+
   const LangSwitch = () => (
     <nav className="lang-switch" aria-label={labels.language}>
       {languages.map((l) => (
@@ -81,6 +85,10 @@ export function Header({ locale, logoSrc, logoAlt, nav, languages, cta, labels }
         </nav>
         <div className="header-actions">
           <LangSwitch />
+          <a className="login-link" href="/admin/login" title={loginTitle}>
+            <LogIn size={18} strokeWidth={2} aria-hidden="true" />
+            <span>{loginLabel}</span>
+          </a>
           <Link className="btn btn-teal" href={localizeHref(cta.href, locale)}>{cta.label}</Link>
           <button type="button" className="menu-toggle" aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(true)}>
             <span className="visually-hidden">{labels.menu}</span>
@@ -106,6 +114,9 @@ export function Header({ locale, logoSrc, logoAlt, nav, languages, cta, labels }
         </ul>
         <LangSwitch />
         <Link className="btn btn-teal" href={localizeHref(cta.href, locale)}>{cta.label}</Link>
+        <a className="btn btn-outline mobile-login" href="/admin/login">
+          <LogIn size={18} strokeWidth={2} aria-hidden="true" /> {loginTitle}
+        </a>
       </div>
     </header>
   );

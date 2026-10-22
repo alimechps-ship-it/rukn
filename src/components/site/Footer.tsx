@@ -52,7 +52,10 @@ export function Footer({ site, logoSrc, t }: { site: SiteData; logoSrc: string; 
         </div>
         <div className="footer-bottom">
           <span>© {year} {settings.site_name}. {t("footer.rights")}</span>
-          <ul>{site.legal.map((n) => <li key={n.id}><Link href={localizeHref(n.href, locale)}>{n.label}</Link></li>)}</ul>
+          <ul>
+            {site.legal.map((n) => <li key={n.id}><Link href={localizeHref(n.href, locale)}>{n.label}</Link></li>)}
+            <li><a href="/admin/login">{locale === "ar" ? "دخول المناديب والفريق" : "Agents & team sign-in"}</a></li>
+          </ul>
         </div>
       </div>
       {wa ? (

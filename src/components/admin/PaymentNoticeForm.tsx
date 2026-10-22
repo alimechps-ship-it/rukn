@@ -7,11 +7,14 @@ import { registerCaseFile } from "@/app/(admin)/admin/(panel)/_actions/cases";
 import { submitPaymentNotice } from "@/app/(admin)/admin/(panel)/_actions/payments";
 import { MAX_FILE_BYTES, PAYMENT_METHODS } from "@/lib/cases";
 
-type Inv = { id: string; invoice_no: string; currency: string; balance: number };
+type Inv = { id: string; invoice_no: string; currency: string; balance: number; case_id?: string; code?: string };
 const PROOF_EXT = ["pdf", "jpg", "jpeg", "png", "webp", "heic"];
 
-/** Agent: "I sent a payment" — with the transfer details and a photo / PDF of the receipt. */
-export function PaymentNoticeForm({ caseId, invoices, defaultCurrency }: { caseId: string; invoices: Inv[]; defaultCurrency: string }) {
+/**
+ * Agent: "I sent a payment" — with the transfer details and a photo / PDF of the receipt.
+ * On a case page (caseId), or from "My account" (agentId): for any open invoice, or on account / as an advance.
+ */
+export function PaymentNoticeForm({ caseId, agentId, invoices, defaultCurrency }: { caseId?: string; agentId?: string; invoices: Inv[]; defaultCurrency: string }) {
   const open = invoices.filter((i) => i.balance > 0);
   const [invoiceId, setInvoiceId] = useState(open[0]?.id ?? "");
   const inv = invoices.find((i) => i.id === invoiceId);
@@ -28,20 +31,24 @@ export function PaymentNoticeForm({ caseId, invoices, defaultCurrency }: { caseI
     setBusy(true); setState(null);
     try {
       let proofFileId: string | null = null;
+      let proofPath: string | null = null;
+      const target = caseId ?? inv?.case_id ?? null; // the case of the payment, or none (on account / advance)
       const file = fd.get("proof") as File | null;
       if (file && file.size) {
         const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
         if (!PROOF_EXT.includes(ext)) { setState({ ok: false, message: "The proof must be a photo (JPG, PNG) or a PDF." }); return; }
         if (file.size > MAX_FILE_BYTES) { setState({ ok: false, message: "The proof file is larger than 50 MB." }); return; }
-        const path = `${caseId}/${crypto.randomUUID()}.${ext}`;
+        const path = target ? `${target}/${crypto.randomUUID()}.${ext}` : `agent/${agentId}/${crypto.randomUUID()}.${ext}`;
         const { error } = await createBrowserSupabase().storage.from("case-files").upload(path, file, { contentType: file.type || "application/octet-stream" });
         if (error) { setState({ ok: false, message: `Upload of the proof failed: ${error.message}` }); return; }
-        const reg = await registerCaseFile({ caseId, path, filename: file.name, size: file.size, mime: file.type, category: "payment_proof", deliverable: false });
-        if (!reg.ok) { setState({ ok: false, message: reg.message }); return; }
-        proofFileId = "fileId" in reg ? (reg.fileId as string) : null;
+        if (target) {
+          const reg = await registerCaseFile({ caseId: target, path, filename: file.name, size: file.size, mime: file.type, category: "payment_proof", deliverable: false });
+          if (!reg.ok) { setState({ ok: false, message: reg.message }); return; }
+          proofFileId = "fileId" in reg ? (reg.fileId as string) : null;
+        } else proofPath = path;
       }
       const res = await submitPaymentNotice({
-        caseId, invoiceId: invoiceId || null, amount: Number(fd.get("amount")), currency: inv?.currency ?? currency,
+        caseId: target, invoiceId: invoiceId || null, proofPath, amount: Number(fd.get("amount")), currency: inv?.currency ?? currency,
         method: String(fd.get("method")), paidAt: String(fd.get("paid_at") ?? ""), reference: String(fd.get("reference") ?? ""),
         notes: String(fd.get("notes") ?? ""), proofFileId,
       });
@@ -53,15 +60,16 @@ export function PaymentNoticeForm({ caseId, invoices, defaultCurrency }: { caseI
   return (
     <form ref={form} onSubmit={onSubmit} className="form-grid">
       {state ? <div className={`flash ${state.ok ? "ok" : "err"} full`} role={state.ok ? "status" : "alert"}>{state.message}</div> : null}
-      {invoices.length ? (
+      {!caseId && !invoiceId ? <p className="small muted full" style={{ margin: 0 }}>No invoice chosen: the amount is recorded on your account as a payment on account / advance, and counts against what you owe.</p> : null}
+      {invoices.length || !caseId ? (
         <div className="field full"><label htmlFor="pn-inv">For invoice · عن الفاتورة</label>
           <select id="pn-inv" value={invoiceId} onChange={(e) => {
             setInvoiceId(e.target.value);
             const i = invoices.find((x) => x.id === e.target.value);
             if (i) { setAmount(String(i.balance > 0 ? i.balance : "")); setCurrency(i.currency); }
           }}>
-            <option value="">— not for a specific invoice —</option>
-            {invoices.map((i) => <option key={i.id} value={i.id}>{i.invoice_no} · balance {i.balance.toFixed(2)} {i.currency}</option>)}
+            <option value="">{caseId ? "— not for a specific invoice —" : "— on account / advance payment · دفعة على الحساب أو مقدمة —"}</option>
+            {invoices.map((i) => <option key={i.id} value={i.id}>{i.invoice_no}{i.code ? ` · ${i.code}` : ""} · balance {i.balance.toFixed(2)} {i.currency}</option>)}
           </select>
         </div>
       ) : null}

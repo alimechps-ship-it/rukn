@@ -27,12 +27,15 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
   if (opts.agent) jq = jq.or(`dr_agent_id.eq.${opts.agent},cr_agent_id.eq.${opts.agent}`);
   const { data: jRows } = await jq;
   const journal = (jRows ?? []) as JournalEntry[];
-  if (!ids.length && !journal.length) return { totals: [] as AgentTotals[], lines: [] as StatementLine[], opening: new Map<string, number>(), from, to };
-  const [{ data: invs }, { data: pays }, { data: claims }] = ids.length ? await Promise.all([
-    db.from("case_invoices").select("id,invoice_no,case_id,issue_date,currency,total,revision,issued_at,created_at").eq("status", "issued").in("case_id", ids),
-    db.from("case_payments").select("id,receipt_no,case_id,paid_at,currency,amount,method,voided,reference,created_at").eq("voided", false).in("case_id", ids),
-    db.from("case_payment_claims").select("case_id,currency,amount").eq("status", "pending").in("case_id", ids),
-  ]) : [{ data: [] }, { data: [] }, { data: [] }];
+  // Payments and notices belong to the agent (with or without a case — advances / payments on account)
+  let pq = db.from("case_payments").select("id,receipt_no,case_id,agent_id,paid_at,currency,amount,method,voided,reference,created_at").eq("voided", false).limit(20000);
+  let nq = db.from("case_payment_claims").select("case_id,agent_id,currency,amount").eq("status", "pending");
+  if (opts.agent) { pq = pq.eq("agent_id", opts.agent); nq = nq.eq("agent_id", opts.agent); }
+  const [{ data: invs }, { data: pays }, { data: claims }] = await Promise.all([
+    ids.length ? db.from("case_invoices").select("id,invoice_no,case_id,issue_date,currency,total,revision,issued_at,created_at").eq("status", "issued").in("case_id", ids) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    pq, nq,
+  ]);
+  if (!ids.length && !journal.length && !(pays ?? []).length && !(claims ?? []).length) return { totals: [] as AgentTotals[], lines: [] as StatementLine[], opening: new Map<string, number>(), from, to };
 
   const totals = new Map<string, AgentTotals>();
   const T = (agent: string) => {
@@ -41,13 +44,13 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
   };
   for (const c of cases ?? []) T(c.agent_id as string).cases++;
   for (const i of invs ?? []) { const t = T(caseMap.get(i.case_id as string)!.agent_id as string); add(t.invoiced, i.currency as string, Number(i.total)); add(t.balance, i.currency as string, Number(i.total)); }
-  for (const p of pays ?? []) { const t = T(caseMap.get(p.case_id as string)!.agent_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.balance, p.currency as string, -Number(p.amount)); }
+  for (const p of pays ?? []) { const t = T(p.agent_id as string); add(t.paid, p.currency as string, Number(p.amount)); add(t.balance, p.currency as string, -Number(p.amount)); }
   // Journal entries: debit to an agent adds to what he owes, credit reduces it (an entry between two agents touches both)
   for (const e of journal) for (const ag of [e.dr_agent_id, e.cr_agent_id]) {
     if (!ag || (opts.agent && ag !== opts.agent)) continue;
     const eff = agentEffect(e, ag)!; const t = T(ag); add(t.journal, eff.currency, eff.amount); add(t.balance, eff.currency, eff.amount);
   }
-  for (const n of claims ?? []) add(T(caseMap.get(n.case_id as string)!.agent_id as string).pending, n.currency as string, Number(n.amount));
+  for (const n of claims ?? []) add(T(n.agent_id as string).pending, n.currency as string, Number(n.amount));
 
   // Ledger lines (only when one agent is selected)
   const lines: StatementLine[] = [];
@@ -62,9 +65,11 @@ export async function loadStatements(db: Db, opts: { agent?: string | null; from
           at: String((i as Record<string, unknown>).issued_at ?? i.created_at ?? "") };
       }),
       ...(pays ?? []).map((p) => {
-        const c = caseMap.get(p.case_id as string)!;
-        return { date: p.paid_at as string, kind: "payment" as const, doc: p.receipt_no as string, doc_id: p.id as string, case_id: c.id as string, code: c.code as string, clinic: c.clinic_name as string,
-          currency: p.currency as string, debit: 0, credit: Number(p.amount), note: (p.reference as string | null) ?? null, at: String(p.created_at ?? "") };
+        const c = p.case_id ? caseMap.get(p.case_id as string) : undefined;
+        const onAccount = !p.case_id;
+        return { date: p.paid_at as string, kind: "payment" as const, doc: p.receipt_no as string, doc_id: p.id as string, case_id: (c?.id as string) ?? "", code: (c?.code as string) ?? "", clinic: (c?.clinic_name as string) ?? "",
+          currency: p.currency as string, debit: 0, credit: Number(p.amount),
+          note: [onAccount ? "On account / advance · دفعة على الحساب" : null, (p.reference as string | null) ?? null].filter(Boolean).join(" · ") || null, at: String(p.created_at ?? "") };
       }),
       ...journal.flatMap((e) => {
         const eff = agentEffect(e, opts.agent!);

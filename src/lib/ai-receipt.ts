@@ -63,10 +63,13 @@ export function compareReceipt(x: Extracted, n: { amount: number; currency: stri
 /** db must be allowed to read the file and call set_claim_ai (case staff session or service role). */
 export async function checkReceipt(db: Db, claimId: string, usageUser: string | null, usageDb?: Db) {
   if (!isAiConfigured()) return { ok: false, message: "AI is not set up (ANTHROPIC_API_KEY)." };
-  const { data: n } = await db.from("case_payment_claims").select("id,amount,currency,paid_at,reference,proof_file_id").eq("id", claimId).maybeSingle();
+  const { data: n } = await db.from("case_payment_claims").select("id,amount,currency,paid_at,reference,proof_file_id,proof_path").eq("id", claimId).maybeSingle();
   if (!n) return { ok: false, message: "Payment notice not found." };
-  if (!n.proof_file_id) return { ok: false, message: "No proof attached to this notice." };
-  const { data: f } = await db.from("case_files").select("storage_path,filename,size_bytes").eq("id", n.proof_file_id).maybeSingle();
+  if (!n.proof_file_id && !n.proof_path) return { ok: false, message: "No proof attached to this notice." };
+  // proof on a case (case file) or on the agent's account (agent/<id>/<file>)
+  const { data: f } = n.proof_path
+    ? { data: { storage_path: n.proof_path as string, filename: String(n.proof_path).split("/").pop() as string } }
+    : await db.from("case_files").select("storage_path,filename").eq("id", n.proof_file_id).maybeSingle();
   if (!f) return { ok: false, message: "Proof file not found." };
   const ext = String(f.filename).split(".").pop()?.toLowerCase() ?? "";
   const save = async (status: string, extracted: unknown, summary: string) => {

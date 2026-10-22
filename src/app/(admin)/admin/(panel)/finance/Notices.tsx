@@ -19,8 +19,8 @@ export const NOTICE_STATUS: Record<string, { en: string; ar: string; tone: strin
 };
 
 export interface Notice {
-  id: string; notice_no: string; case_id: string; invoice_id: string | null; amount: number; currency: string; method: string; paid_at: string;
-  reference: string | null; notes: string | null; proof_file_id: string | null; status: string; submitted_by: string | null;
+  id: string; notice_no: string; case_id: string | null; invoice_id: string | null; amount: number; currency: string; method: string; paid_at: string;
+  reference: string | null; notes: string | null; proof_file_id: string | null; proof_path?: string | null; agent_id?: string | null; status: string; submitted_by: string | null;
   reviewed_at: string | null; review_note: string | null; payment_id: string | null; created_at: string;
   ai_status?: string | null; ai_summary?: string | null; ai_checked_at?: string | null;
 }
@@ -41,7 +41,7 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
             <div className="notice-head">
               <div>
                 <span className="mono"><strong>{n.notice_no}</strong></span> <span className={`pill ${st.tone}`}>{st.en} · {st.ar}</span>
-                {showCase && caseCodes ? <> · <Link className="mono small" href={`/admin/cases/${n.case_id}`}>{caseCodes.get(n.case_id)}</Link></> : null}
+                {showCase && caseCodes ? (n.case_id ? <> · <Link className="mono small" href={`/admin/cases/${n.case_id}`}>{caseCodes.get(n.case_id)}</Link></> : <> · <span className="pill new">On account / advance · دفعة على الحساب</span></>) : null}
                 <div className="small muted">
                   {PAYMENT_METHODS[n.method]?.en} · {fmtDay(n.paid_at)}{n.reference ? ` · ref. ${n.reference}` : ""}
                   {n.invoice_id ? ` · for ${invoiceNos.get(n.invoice_id) ?? "invoice"}` : ""}{n.submitted_by ? ` · sent by ${names.get(n.submitted_by) ?? ""}` : ""}
@@ -51,9 +51,9 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
             </div>
             {n.notes ? <div className="small">“{n.notes}”</div> : null}
             <div className="btn-row" style={{ marginTop: 6 }}>
-              {n.proof_file_id ? <a className="btn secondary small" href={`/admin/cases/${n.case_id}/files/${n.proof_file_id}`} target="_blank" rel="noopener">📎 Proof of payment</a> : <span className="small muted">No proof attached</span>}
-              {receipt ? <a className="btn secondary small" href={`/admin/print/case/${n.case_id}/receipt?p=${receipt.id}`} target="_blank" rel="noopener">🖨 Receipt {receipt.no}</a> : null}
-              {!staff && n.status === "pending" ? <ConfirmAction action={cancelPaymentNotice} hidden={{ id: n.id, case_id: n.case_id }} label="Withdraw" title="Withdraw this payment notice?" message="Use this if the amount or details were wrong; then send a new notice." confirmLabel="Withdraw" /> : null}
+              {n.proof_file_id || n.proof_path ? <a className="btn secondary small" href={`/admin/payment-proof/${n.id}`} target="_blank" rel="noopener">📎 Proof of payment</a> : <span className="small muted">No proof attached</span>}
+              {receipt ? <a className="btn secondary small" href={`/admin/print/payment/${receipt.id}`} target="_blank" rel="noopener">🖨 Receipt {receipt.no}</a> : null}
+              {!staff && n.status === "pending" ? <ConfirmAction action={cancelPaymentNotice} hidden={{ id: n.id, case_id: n.case_id ?? "" }} label="Withdraw" title="Withdraw this payment notice?" message="Use this if the amount or details were wrong; then send a new notice." confirmLabel="Withdraw" /> : null}
             </div>
             {staff && n.ai_status ? (
               <div className={`ai-box ${AI_TONE[n.ai_status]?.cls ?? ""}`}>
@@ -61,10 +61,10 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
                 <div dir="auto">{n.ai_summary}</div>
               </div>
             ) : null}
-            {staff && aiEnabled && n.proof_file_id && n.status === "pending" ? (
+            {staff && aiEnabled && (n.proof_file_id || n.proof_path) && n.status === "pending" ? (
               <ActionForm action={recheckReceipt} className="inline-ai">
                 <input type="hidden" name="id" value={n.id} />
-                <input type="hidden" name="case_id" value={n.case_id} />
+                <input type="hidden" name="case_id" value={n.case_id ?? ""} />
                 <SubmitButton className="btn secondary small" pendingText="Reading the receipt…">🤖 {n.ai_status ? "Re-check" : "Check"} receipt with AI</SubmitButton>
               </ActionForm>
             ) : null}
@@ -73,7 +73,7 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
               <div className="notice-review">
                 <ActionForm action={acceptPaymentNotice} className="form-grid">
                   <input type="hidden" name="id" value={n.id} />
-                  <input type="hidden" name="case_id" value={n.case_id} />
+                  <input type="hidden" name="case_id" value={n.case_id ?? ""} />
                   <div className="field"><label htmlFor={`acc-box-${n.id}`}>Deposit into · إيداع في</label>
                     <select id={`acc-box-${n.id}`} name="cash_account_id" defaultValue={boxes.find((b) => b.currency === n.currency)?.id ?? ""}>
                       <option value="">— record only, no cash box —</option>
@@ -88,7 +88,7 @@ export function NoticesTable({ notices, staff, boxes, caseCodes, invoiceNos, rec
                   <summary className="small"><strong>Reject…</strong></summary>
                   <ActionForm action={rejectPaymentNotice} className="form-grid">
                     <input type="hidden" name="id" value={n.id} />
-                    <input type="hidden" name="case_id" value={n.case_id} />
+                    <input type="hidden" name="case_id" value={n.case_id ?? ""} />
                     <div className="field full"><label htmlFor={`rej-${n.id}`}>Reason (the agent sees it) *</label><input id={`rej-${n.id}`} type="text" name="reason" maxLength={300} required placeholder="e.g. transfer not received yet / amount differs" /></div>
                     <div className="full"><SubmitButton className="btn danger small">Reject notice</SubmitButton></div>
                   </ActionForm>

@@ -35,7 +35,8 @@ export async function confirmReceipt(caseId: string, _: ActionResult, fd: FormDa
 
 /** Agent sends a payment notice (after the optional proof file was uploaded by the browser). */
 export async function submitPaymentNotice(input: {
-  caseId: string; invoiceId: string | null; amount: number; currency: string; method: string; paidAt: string; reference: string; notes: string; proofFileId: string | null;
+  caseId: string | null; invoiceId: string | null; amount: number; currency: string; method: string; paidAt: string; reference: string; notes: string;
+  proofFileId: string | null; proofPath?: string | null;
 }): Promise<{ ok: boolean; message: string }> {
   try {
     const user = await assertStaff(can.cases);
@@ -46,21 +47,22 @@ export async function submitPaymentNotice(input: {
     if (!/^[A-Z]{3}$/.test(currency)) return { ok: false, message: "Enter a 3-letter currency code (e.g. USD)." };
     if (!(input.method in PAYMENT_METHODS)) return { ok: false, message: "Choose how you paid." };
     const { data, error } = await db.from("case_payment_claims").insert({
-      case_id: input.caseId,
+      case_id: input.caseId && UUID.test(input.caseId) ? input.caseId : null, // none = payment on account / advance
       invoice_id: input.invoiceId && UUID.test(input.invoiceId) ? input.invoiceId : null,
       amount, currency, method: input.method,
       paid_at: /^\d{4}-\d{2}-\d{2}$/.test(input.paidAt) ? input.paidAt : undefined,
       reference: input.reference?.trim().slice(0, 120) || null,
       notes: input.notes?.trim().slice(0, 500) || null,
       proof_file_id: input.proofFileId && UUID.test(input.proofFileId) ? input.proofFileId : null,
+      proof_path: !input.proofFileId && input.proofPath && /^agent\/[0-9a-f-]{36}\/[^/]+$/.test(input.proofPath) ? input.proofPath : null,
     }).select("id,notice_no").single();
     if (error) return { ok: false, message: errMessage(error) };
     // Read the receipt with AI in the background (needs the server service key).
     const svc = createServiceClient();
-    if (svc && isAiConfigured() && input.proofFileId) {
+    if (svc && isAiConfigured() && (input.proofFileId || input.proofPath)) {
       after(async () => { await checkReceipt(svc, data.id as string, user.id).catch(() => undefined); });
     }
-    refresh(input.caseId);
+    refresh(input.caseId ?? undefined);
     return { ok: true, message: `Payment notice ${data.notice_no} sent. RUKN will confirm it after checking the transfer.` };
   } catch (e) { return fail(e) as { ok: boolean; message: string }; }
 }

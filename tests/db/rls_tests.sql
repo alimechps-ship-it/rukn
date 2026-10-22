@@ -763,12 +763,13 @@ do $$ begin
 exception when insufficient_privilege then perform t.ok(true, 'agent cannot confirm payments'); end $$;
 reset role;
 
+select set_config('t.a1case', (select id::text from public.cases where agent_id = '00000000-0000-0000-0000-0000000000a1' limit 1), false);
 select t.login('00000000-0000-0000-0000-0000000000a2');
 set role authenticated;
 select t.ok((select count(*) = 0 from public.case_payment_claims), 'agent 2 cannot see agent 1 payment notices');
 do $$ begin
-  insert into public.case_payment_claims (case_id, amount, currency, method) values ((select id from public.cases limit 1), 1, 'USD', 'cash');
-  perform t.ok(false, 'agent 2 has no case id');
+  insert into public.case_payment_claims (case_id, amount, currency, method) values (current_setting('t.a1case')::uuid, 1, 'USD', 'cash');
+  perform t.ok(false, 'agent 2 must not send a notice on agent 1 case');
 exception when not_null_violation or insufficient_privilege then perform t.ok(true, 'agent 2 cannot send notices on agent 1 cases'); end $$;
 reset role;
 
@@ -1222,6 +1223,49 @@ reset role;
 select t.login('00000000-0000-0000-0000-0000000000c1');
 set role authenticated;
 select t.ok((select count(*) = 0 from public.journal_entries), 'case manager sees no journal entries');
+reset role;
+
+-- Payments on account / advances (no case)
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+do $$ declare v_id uuid; begin
+  insert into public.case_payment_claims (amount, currency, method, reference, proof_path)
+  values (300, 'USD', 'bank_transfer', 'ADV-1', 'agent/00000000-0000-0000-0000-0000000000a1/proof.pdf') returning id into v_id;
+  perform t.ok((select agent_id = '00000000-0000-0000-0000-0000000000a1' and case_id is null and notice_no like 'PN-%' from public.case_payment_claims where id = v_id), 'agent sends an advance / on-account payment notice without a case');
+  begin
+    insert into public.case_payment_claims (amount, currency, method, proof_path) values (5, 'USD', 'cash', 'agent/00000000-0000-0000-0000-0000000000a2/x.pdf');
+    perform t.ok(false, 'foreign proof path must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'the proof must be in the agent''s own folder'); end;
+  begin
+    insert into public.case_payment_claims (agent_id, amount, currency, method) values ('00000000-0000-0000-0000-0000000000a2', 5, 'USD', 'cash');
+    perform t.ok((select agent_id = '00000000-0000-0000-0000-0000000000a1' from public.case_payment_claims where amount = 5 and reference is null order by created_at desc limit 1), 'a notice is always on the sender''s own account');
+  exception when others then perform t.ok(true, 'a notice is always on the sender''s own account'); end;
+end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_payment_claims where reference = 'ADV-1'), 'another agent cannot see the advance notice');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000c1');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_payment_claims where reference = 'ADV-1'), 'case manager cannot see it either');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_rc text; v_box uuid; begin
+  select id into v_box from public.cash_accounts where currency = 'USD' and active order by created_at limit 1;
+  v_rc := public.accept_payment_claim((select id from public.case_payment_claims where reference = 'ADV-1'), v_box);
+  perform t.ok((select case_id is null and agent_id = '00000000-0000-0000-0000-0000000000a1' and amount = 300 from public.case_payments where receipt_no = v_rc), 'finance confirms it: receipt on the agent account without a case');
+  perform t.ok((select count(*) = 1 from public.cash_entries e join public.case_payments p on p.id = e.case_payment_id where p.receipt_no = v_rc and e.description like 'Payment on account%'), 'and it is deposited in the cash box');
+end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 1 from public.case_payments where case_id is null and reference = 'ADV-1'), 'the agent sees his receipt on account');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.case_payments where reference = 'ADV-1'), 'other agents do not');
 reset role;
 
 -- Last super administrator protection (deferred trigger → check immediately)

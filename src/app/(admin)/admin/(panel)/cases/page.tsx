@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { fmtMoney } from "@/lib/cases";
+import { loadStatements } from "@/lib/statement";
 import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { profileMap, peopleWithRole } from "@/lib/case-data";
@@ -30,6 +32,8 @@ export default async function Cases({ searchParams }: { searchParams: Promise<F>
   const people = await profileMap(db, rows.map((r) => r.agent_id));
   const qs = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== "page") as [string, string][]).toString();
   const pages = Math.max(1, Math.ceil((count ?? 0) / PER));
+  // Agent: what he owes RUKN → invite him to send the money
+  const owes = !staff ? [...((await loadStatements(db, { agent: user.id })).totals[0]?.balance ?? new Map<string, number>()).entries()].filter(([, v]) => v > 0) : [];
 
   return (
     <>
@@ -40,6 +44,12 @@ export default async function Cases({ searchParams }: { searchParams: Promise<F>
           <Link className="btn teal" href="/admin/cases/new">+ New case</Link>
         </div>
       </div>
+      {owes.length ? (
+        <div className="flash warn" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "space-between" }}>
+          <span>Balance due to RUKN · المستحق عليك: <strong>{owes.map(([c, v]) => fmtMoney(v, c)).join(" · ")}</strong></span>
+          <Link className="btn teal small" href="/admin/statement#send-payment">💳 Send a payment · إرسال دفعة</Link>
+        </div>
+      ) : null}
       <section className="panel tight">
         <form className="filters" method="get">
           <div className="field grow"><label htmlFor="q">Search</label><input id="q" name="q" type="search" defaultValue={f.q} placeholder="Case code, clinic, doctor, patient ref" /></div>

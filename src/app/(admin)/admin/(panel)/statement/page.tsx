@@ -4,6 +4,10 @@ import { createSessionClient } from "@/lib/admin";
 import { peopleWithRole, profileMap } from "@/lib/case-data";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { loadStatements, mapText } from "@/lib/statement";
+import { loadReceivables } from "@/lib/finance";
+import { isAiConfigured } from "@/lib/ai";
+import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
+import { NoticesTable, type Notice } from "../finance/Notices";
 
 export const metadata = { title: "Account statement" };
 
@@ -16,6 +20,22 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
   const [st, agents] = await Promise.all([loadStatements(db, { agent, from: sp.from, to: sp.to }), staff ? peopleWithRole(db, ["agent"]) : Promise.resolve([])]);
   const people = await profileMap(db, [...st.totals.map((t) => t.agent), user.id]);
   const mine = agent ? st.totals.find((t) => t.agent === agent) : undefined;
+  // Payment notices of this agent (any case, or on account) and his open invoices
+  const [{ data: notices }, rec, { data: boxes }] = agent ? await Promise.all([
+    db.from("case_payment_claims").select("*").eq("agent_id", agent).order("created_at", { ascending: false }).limit(50),
+    loadReceivables(db, { agent }),
+    staff ? db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
+  ]) : [{ data: [] }, { rows: [] as Awaited<ReturnType<typeof loadReceivables>>["rows"] }, { data: [] }];
+  const noticeList = (notices ?? []) as Notice[];
+  const nIds = { inv: [...new Set(noticeList.map((n) => n.invoice_id).filter(Boolean))] as string[], pay: [...new Set(noticeList.map((n) => n.payment_id).filter(Boolean))] as string[] };
+  const nCases = [...new Set(noticeList.map((n) => n.case_id).filter(Boolean))] as string[];
+  const [{ data: nInv }, { data: nPay }, { data: nCase }] = await Promise.all([
+    nIds.inv.length ? db.from("case_invoices").select("id,invoice_no").in("id", nIds.inv) : Promise.resolve({ data: [] }),
+    nIds.pay.length ? db.from("case_payments").select("id,receipt_no").in("id", nIds.pay) : Promise.resolve({ data: [] }),
+    nCases.length ? db.from("cases").select("id,code").in("id", nCases) : Promise.resolve({ data: [] }),
+  ]);
+  const openInvoices = rec.rows.map((r) => ({ id: r.invoice_id, invoice_no: r.invoice_no, currency: r.currency, balance: r.balance, case_id: r.case_id, code: r.code }));
+  const owes = mine ? [...mine.balance.entries()].filter(([, v]) => v > 0) : [];
   const qs = new URLSearchParams(Object.entries({ agent: staff ? agent ?? "" : "", from: sp.from ?? "", to: sp.to ?? "" }).filter(([, v]) => v)).toString();
 
   return (
@@ -46,6 +66,23 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
             <div className="stat"><div className="k">Balance due · الرصيد المستحق</div><div className="v" style={{ fontSize: "1.1rem", color: "#b42318" }}>{mine ? mapText(mine.balance, fmtMoney) : "—"}</div></div>
             <div className="stat"><div className="k">Payments awaiting confirmation · قيد التأكيد</div><div className="v" style={{ fontSize: "1.1rem" }}>{mine ? mapText(mine.pending, fmtMoney) : "—"}</div></div>
           </div>
+          {!staff ? (
+            <section className="panel" id="send-payment">
+              <h2>💳 Send a payment to RUKN · إرسال دفعة للشركة</h2>
+              <p className="small muted" style={{ marginTop: -6 }}>
+                {owes.length ? <>You owe RUKN <strong style={{ color: "#b42318" }}>{owes.map(([c, v]) => fmtMoney(v, c)).join(" · ")}</strong>. </> : <>You have no open balance — you can still send an <strong>advance payment</strong>. </>}
+                Choose an invoice, or leave it empty for a payment on account / advance. Attach the transfer receipt; the finance team confirms it and issues the official receipt.
+              </p>
+              <PaymentNoticeForm agentId={agent} invoices={openInvoices} defaultCurrency={owes[0]?.[0] ?? openInvoices[0]?.currency ?? "USD"} />
+            </section>
+          ) : null}
+          <section className="panel">
+            <h2>{staff ? "Payment notices of this agent" : "Your payment notices"} · إشعارات الدفع</h2>
+            <NoticesTable notices={noticeList} staff={staff} boxes={(boxes ?? []) as { id: string; name: string; currency: string }[]} showCase
+              caseCodes={new Map((nCase ?? []).map((c) => [c.id as string, c.code as string]))} invoiceNos={new Map((nInv ?? []).map((i) => [i.id as string, i.invoice_no as string]))}
+              receiptNos={new Map((nPay ?? []).map((p) => [p.id as string, { no: p.receipt_no as string, id: p.id as string }]))} names={new Map([...people.entries()].map(([k, v]) => [k, v.name]))}
+              aiEnabled={staff && isAiConfigured()} />
+          </section>
           <section className="panel">
             <h2>Movements · الحركات</h2>
             <div className="table-scroll">
@@ -57,7 +94,7 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
                   {st.lines.map((l) => (
                     <tr key={`${l.kind}-${l.doc_id}`}>
                       <td className="small nowrap">{fmtDay(l.date)}</td>
-                      <td className="mono nowrap">{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/case/${l.case_id}/receipt?p=${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted">{l.note}</div> : null}</td>
+                      <td className="mono nowrap">{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/payment/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted">{l.note}</div> : null}</td>
                       <td className="small">{l.case_id ? <><Link className="mono" href={`/admin/cases/${l.case_id}`}>{l.code}</Link><div>{l.clinic}</div></> : "—"}</td>
                       <td className="num nowrap">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
                       <td className="num nowrap" style={{ color: "#067647" }}>{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>

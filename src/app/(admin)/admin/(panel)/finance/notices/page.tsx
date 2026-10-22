@@ -17,7 +17,7 @@ export default async function NoticesPage({ searchParams }: { searchParams: Prom
     db.from("cash_accounts").select("id,name,currency").eq("active", true).order("sort_order"),
   ]);
   const all = [...(pending ?? []), ...(recent ?? [])] as Notice[];
-  const caseIds = [...new Set(all.map((n) => n.case_id))];
+  const caseIds = [...new Set(all.map((n) => n.case_id).filter(Boolean))] as string[];
   const invIds = [...new Set(all.map((n) => n.invoice_id).filter(Boolean))] as string[];
   const payIds = [...new Set(all.map((n) => n.payment_id).filter(Boolean))] as string[];
   const [{ data: cases }, { data: invs }, { data: pays }, people] = await Promise.all([

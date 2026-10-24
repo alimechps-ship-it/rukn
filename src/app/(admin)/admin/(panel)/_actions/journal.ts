@@ -14,19 +14,20 @@ const dateOf = (fd: FormData, k: string) => { const d = str(fd, k, 10); return d
 /** "agent:<uuid>" | "partner:<uuid>" | "ledger:<uuid>" → columns of one side */
 function side(prefix: "dr" | "cr", v: FormDataEntryValue | null, doc: FormDataEntryValue | null) {
   const [type, id] = String(v ?? "").split(":");
-  if (!["agent", "partner", "ledger"].includes(type) || !UUID.test(id ?? "")) return null;
+  if (!["agent", "partner", "ledger", "cash"].includes(type) || !UUID.test(id ?? "")) return null;
   const d = String(doc ?? "");
   return {
     [`${prefix}_type`]: type,
     [`${prefix}_agent_id`]: type === "agent" ? id : null,
     [`${prefix}_partner_id`]: type === "partner" ? id : null,
     [`${prefix}_ledger_id`]: type === "ledger" ? id : null,
+    [`${prefix}_cash_id`]: type === "cash" ? id : null,
     [`${prefix}_invoice_id`]: type === "agent" && UUID.test(d) ? d : null,
     [`${prefix}_bill_id`]: type === "partner" && UUID.test(d) ? d : null,
   };
 }
 const refresh = () => {
-  for (const p of ["/admin/finance/journal", "/admin/statement", "/admin/finance/receivables", "/admin/partners", "/admin/partner-statement", "/admin/partner-bills"]) revalidatePath(p);
+  for (const p of ["/admin/finance/journal", "/admin/finance/accounts", "/admin/finance/cash", "/admin/statement", "/admin/finance/receivables", "/admin/partners", "/admin/partner-statement", "/admin/partner-bills"]) revalidatePath(p);
 };
 
 /** Simple journal entry: one debit account, one credit account, each in its own currency. */
@@ -75,11 +76,17 @@ export async function saveLedgerAccount(id: string | null, _: ActionResult, fd: 
   try {
     await assertStaff(can.finance);
     const db = await createSessionClient();
-    const row = {
+    const parent = String(fd.get("parent_id") ?? "");
+    const row: Record<string, unknown> = {
       code: str(fd, "code", 12), name_en: str(fd, "name_en", 120), name_ar: str(fd, "name_ar", 120),
       kind: String(fd.get("kind") ?? "other"), active: id ? fd.get("active") === "on" : true,
+      parent_id: UUID.test(parent) ? parent : null, is_group: fd.get("is_group") === "on",
     };
-    if (!row.code || !/^[0-9A-Za-z.-]{1,12}$/.test(row.code)) return { ok: false, message: "Enter an account code (digits / letters)." };
+    if (row.parent_id && !fd.get("kind")) {
+      const { data: p } = await db.from("ledger_accounts").select("kind").eq("id", row.parent_id as string).maybeSingle();
+      if (p) row.kind = p.kind;
+    }
+    if (!row.code || !/^[0-9A-Za-z.-]{1,12}$/.test(row.code as string)) return { ok: false, message: "Enter an account code (digits / letters)." };
     if (!row.name_en) return { ok: false, message: "Enter the account name." };
     const { error } = id ? await db.from("ledger_accounts").update(row).eq("id", id) : await db.from("ledger_accounts").insert(row);
     if (error) return { ok: false, message: errMessage(error) };

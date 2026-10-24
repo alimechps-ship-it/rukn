@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ActionForm, SubmitButton, type ActionResult } from "./ActionForm";
 
 type Action = (prev: ActionResult, fd: FormData) => Promise<ActionResult>;
-type T = "agent" | "partner" | "ledger";
+type T = "agent" | "partner" | "ledger" | "cash";
 export type JAccount = { key: string; type: T; id: string; name: string; sub: string; badge: string; currency: string | null; code?: string };
 export type JDoc = { id: string; key: string; label: string; currency: string };
 export type JTemplate = { key: string; en: string; ar: string; dr: string; cr: string; hint: string };
@@ -16,6 +16,7 @@ const EFFECT: Record<T, { dr: string; cr: string }> = {
   agent: { dr: "adds to what the agent owes · يزيد المستحق عليه", cr: "reduces what the agent owes · ينقص المستحق عليه" },
   partner: { dr: "reduces what RUKN owes them · ينقص المستحق له", cr: "adds to what RUKN owes them · يزيد المستحق له" },
   ledger: { dr: "debit to the account · مدين", cr: "credit to the account · دائن" },
+  cash: { dr: "money comes INTO the box (receipt voucher) · يدخل الصندوق", cr: "money goes OUT of the box (payment voucher) · يخرج من الصندوق" },
 };
 
 function Picker({ id, label, accounts, value, onChange, only }: { id: string; label: string; accounts: JAccount[]; value: JAccount | null; onChange: (a: JAccount | null) => void; only?: T }) {
@@ -31,13 +32,13 @@ function Picker({ id, label, accounts, value, onChange, only }: { id: string; la
       <label htmlFor={id}>{label}</label>
       {value ? (
         <div className="picked">
-          <span className={`pill ${value.type === "partner" ? "qualified" : value.type === "agent" ? "new" : "draft"}`}>{value.badge}</span><strong>{value.code ? `${value.code} · ` : ""}{value.name}</strong>{value.sub ? <span className="small muted"> · {value.sub}</span> : null}
+          <span className={`pill ${value.type === "partner" ? "qualified" : value.type === "agent" ? "new" : value.type === "cash" ? "published" : "draft"}`}>{value.badge}</span><strong>{value.code ? `${value.code} · ` : ""}{value.name}</strong>{value.sub ? <span className="small muted"> · {value.sub}</span> : null}
           <button type="button" className="icon-btn" aria-label="Change" title="Change" onClick={() => onChange(null)}>✕</button>
         </div>
       ) : (
         <div style={{ position: "relative" }}>
           <input id={id} type="text" autoComplete="off" value={text} role="combobox" aria-expanded={open}
-            placeholder={only === "agent" ? "Search an agent… · ابحث عن مندوب" : only === "partner" ? "Search a lab or clinic… · ابحث عن معمل أو عيادة" : only === "ledger" ? "Search an account… · ابحث عن حساب" : "Agent, lab, clinic or account (name, code…) · ابحث"}
+            placeholder={only === "agent" ? "Search an agent… · ابحث عن مندوب" : only === "partner" ? "Search a lab or clinic… · ابحث عن معمل أو عيادة" : only === "ledger" ? "Search an account… · ابحث عن حساب" : only === "cash" ? "Search a cash box… · ابحث عن صندوق" : "Agent, lab, clinic, cash box or account (name, code…) · ابحث"}
             onChange={(e) => { setText(e.target.value); setOpen(true); setHi(0); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
             onKeyDown={(e) => {
               if (!open || !list.length) return;
@@ -49,7 +50,7 @@ function Picker({ id, label, accounts, value, onChange, only }: { id: string; la
             <ul className="picker-list" role="listbox">
               {list.map((a, i) => (
                 <li key={a.key} role="option" aria-selected={i === hi} className={i === hi ? "hi" : undefined} onMouseEnter={() => setHi(i)} onMouseDown={(e) => { e.preventDefault(); choose(a); }}>
-                  <span className={`pill ${a.type === "partner" ? "qualified" : a.type === "agent" ? "new" : "draft"}`}>{a.badge}</span> <strong>{a.code ? `${a.code} · ` : ""}{a.name}</strong>{a.sub ? <span className="small muted"> · {a.sub}</span> : null}
+                  <span className={`pill ${a.type === "partner" ? "qualified" : a.type === "agent" ? "new" : a.type === "cash" ? "published" : "draft"}`}>{a.badge}</span> <strong>{a.code ? `${a.code} · ` : ""}{a.name}</strong>{a.sub ? <span className="small muted"> · {a.sub}</span> : null}
                 </li>
               ))}
             </ul>
@@ -75,7 +76,7 @@ export function JournalForm({ action, accounts, docs, templates, perUsd, preset 
   const [rate, setRate] = useState<string | null>(null);
   const [crAmt, setCrAmt] = useState<string | null>(null);
   const [drDoc, setDrDoc] = useState(""); const [crDoc, setCrDoc] = useState("");
-  const isT = (s: string): s is T => s === "agent" || s === "partner" || s === "ledger";
+  const isT = (s: string): s is T => s === "agent" || s === "partner" || s === "ledger" || s === "cash";
   const onlyDr = tpl && isT(tpl.dr) ? tpl.dr : tpl ? "ledger" : undefined;
   const onlyCr = tpl && isT(tpl.cr) ? tpl.cr : tpl ? "ledger" : undefined;
 
@@ -136,7 +137,7 @@ export function JournalForm({ action, accounts, docs, templates, perUsd, preset 
             </div>
           )}
           <div className="field"><label htmlFor={`jv-${s}-cur`}>Currency</label>
-            <input id={`jv-${s}-cur`} type="text" name={`${s}_currency`} maxLength={3} value={s === "dr" ? drCur : crCur}
+            <input id={`jv-${s}-cur`} type="text" name={`${s}_currency`} maxLength={3} value={s === "dr" ? drCur : crCur} readOnly={a?.type === "cash"} title={a?.type === "cash" ? "The currency of the cash box" : undefined}
               onChange={(e) => { (s === "dr" ? setDrCur : setCrCur)(e.target.value.toUpperCase()); setRate(null); setCrAmt(null); }} />
           </div>
         </div>

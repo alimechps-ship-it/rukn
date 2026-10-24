@@ -1298,6 +1298,56 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.cash_entries), 'another agent sees no vouchers');
 reset role;
 
+-- Chart of accounts + cash boxes in journal entries
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_box uuid; v_egp uuid; v_exp uuid; v_inc uuid; v_id uuid; v_bal numeric; begin
+  perform t.ok((select count(*) = 4 from public.ledger_accounts where subledger is not null), 'the tree has the automatic main accounts (cash, agents, labs, clinics)');
+  perform t.ok((select p.code = '5' from public.ledger_accounts a join public.ledger_accounts p on p.id = a.parent_id where a.code = '5100'), 'accounts are placed under their main account (5100 under 5)');
+  select id into v_box from public.cash_accounts where name = 'FX test USD';
+  select id into v_egp from public.cash_accounts where name = 'FX test EGP';
+  select id into v_exp from public.ledger_accounts where code = '5200';
+  select id into v_inc from public.ledger_accounts where code = '4900';
+  v_bal := public.cash_balance(v_box);
+  insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_cash_id, cr_currency, description)
+  values ('ledger', v_exp, 12, 'USD', 'cash', v_box, 'USD', 'Bank charges') returning id into v_id;
+  perform t.ok(public.cash_balance(v_box) = v_bal - 12, 'credit to a cash box takes the money out of the box');
+  perform t.ok((select count(*) = 1 from public.cash_entries where journal_id = v_id and direction = 'out' and category = 'journal'), 'and creates a linked payment voucher');
+  begin
+    update public.cash_entries set voided = true, void_reason = 'x' where journal_id = v_id;
+    perform t.ok(false, 'voucher of a journal must not be voided directly');
+  exception when insufficient_privilege then perform t.ok(true, 'its voucher is voided only through the entry'); end;
+  update public.journal_entries set voided = true, void_reason = 'test' where id = v_id;
+  perform t.ok(public.cash_balance(v_box) = v_bal, 'voiding the entry returns the money to the box');
+  insert into public.journal_entries (dr_type, dr_cash_id, dr_amount, dr_currency, cr_type, cr_ledger_id, cr_currency)
+  values ('cash', v_box, 30, 'USD', 'ledger', v_inc, 'USD');
+  perform t.ok(public.cash_balance(v_box) = v_bal + 30, 'debit to a cash box puts money into it');
+  begin
+    insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_cash_id, cr_currency)
+    values ('ledger', v_exp, 5, 'EUR', 'cash', v_box, 'EUR');
+    perform t.ok(false, 'box currency mismatch');
+  exception when invalid_parameter_value then perform t.ok(true, 'a cash box side is always in the box currency'); end;
+  begin
+    insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_cash_id, cr_currency)
+    values ('ledger', v_exp, 999999, 'USD', 'cash', v_box, 'USD');
+    perform t.ok(false, 'overdraw');
+  exception when invalid_parameter_value then perform t.ok(true, 'a box cannot pay out more than its balance'); end;
+  begin
+    insert into public.journal_entries (dr_type, dr_ledger_id, dr_amount, dr_currency, cr_type, cr_ledger_id, cr_currency)
+    values ('ledger', (select id from public.ledger_accounts where code = '5'), 5, 'USD', 'ledger', v_inc, 'USD');
+    perform t.ok(false, 'group account in entry');
+  exception when invalid_parameter_value then perform t.ok(true, 'main (group) accounts cannot be used in entries'); end;
+  -- box to box in two currencies
+  insert into public.journal_entries (dr_type, dr_cash_id, dr_amount, dr_currency, cr_type, cr_cash_id, cr_currency, fx_rate)
+  values ('cash', v_egp, 500, 'EGP', 'cash', v_box, 'USD', 0.02) returning id into v_id;
+  perform t.ok((select count(*) = 2 from public.cash_entries where journal_id = v_id), 'an entry between two boxes moves money in both (500 EGP in, 10 USD out)');
+  begin
+    insert into public.ledger_accounts (code, name_en, parent_id) values ('1119', 'x', (select id from public.ledger_accounts where code = '111'));
+    perform t.ok(false, 'manual under subledger');
+  exception when invalid_parameter_value then perform t.ok(true, 'accounts under the cash / agents / partners main accounts are automatic only'); end;
+end $$;
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

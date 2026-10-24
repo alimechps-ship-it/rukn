@@ -41,12 +41,12 @@ export function NewEntryForm({ direction, accounts, people, parties, defaultAcco
 }
 
 export function EditEntryForm({ entry, people, parties }: { entry: CashEntry; people: Person[]; parties: Parties }) {
-  const linked = Boolean(entry.case_payment_id || entry.transfer_group || entry.partner_payment_id);
+  const linked = Boolean(entry.case_payment_id || entry.transfer_group || entry.partner_payment_id || entry.journal_id);
   const cats = entry.direction === "in" ? IN_CATEGORIES : OUT_CATEGORIES;
   const idp = `e-${entry.id.slice(0, 8)}`;
   return (
     <ActionForm action={updateCashEntry.bind(null, entry.id)} className="form-grid inline-form wide">
-      {linked ? <p className="small muted full" style={{ margin: 0 }}>Linked to a {entry.case_payment_id ? "case payment" : entry.partner_payment_id ? "payment to a lab / clinic" : "transfer"}: amount, date, type and party follow it — void it there to cancel.</p> : (
+      {linked ? <p className="small muted full" style={{ margin: 0 }}>Linked to a {entry.case_payment_id ? "case payment" : entry.partner_payment_id ? "payment to a lab / clinic" : entry.journal_id ? "journal entry" : "transfer"}: amount, date, type and party follow it — void it there to cancel.</p> : (
         <>
           <div className="field"><label htmlFor={`${idp}-amt`}>Amount</label><input id={`${idp}-amt`} type="number" name="amount" min="0.01" step="0.01" defaultValue={Number(entry.amount)} /></div>
           <div className="field"><label htmlFor={`${idp}-date`}>Date</label><input id={`${idp}-date`} type="date" name="entry_date" defaultValue={entry.entry_date} /></div>
@@ -57,7 +57,7 @@ export function EditEntryForm({ entry, people, parties }: { entry: CashEntry; pe
           </div>
         </>
       )}
-      {entry.partner_payment_id ? null : <PartyFields people={people} parties={parties} entry={entry} idp={idp} direction={entry.direction} />}
+      {entry.partner_payment_id || entry.journal_id ? null : <PartyFields people={people} parties={parties} entry={entry} idp={idp} direction={entry.direction} />}
       <div className="field full"><label htmlFor={`${idp}-desc`}>Description</label><input id={`${idp}-desc`} type="text" name="description" maxLength={500} defaultValue={entry.description ?? ""} /></div>
       <div className="field full"><label htmlFor={`${idp}-ref`}>Reference</label><input id={`${idp}-ref`} type="text" name="reference" maxLength={120} defaultValue={entry.reference ?? ""} /></div>
       <div className="full"><SubmitButton className="btn small">Save voucher</SubmitButton></div>
@@ -100,7 +100,7 @@ export function EntriesTable({ entries, accounts, people, parties, names, runnin
                         <summary className="btn secondary small">Edit</summary>
                         <EditEntryForm entry={e} people={people} parties={parties} />
                       </details>{" "}
-                      {!e.case_payment_id ? (
+                      {!e.case_payment_id && !e.journal_id ? (
                         <details className="inline-details" style={{ display: "inline-block" }}>
                           <summary className="btn danger small">Void</summary>
                           <ActionForm action={voidCashEntry} className="inline-form">

@@ -1,15 +1,18 @@
 import "server-only";
 import type { Db } from "./admin";
 
-export type AccType = "agent" | "partner" | "ledger";
+export type AccType = "agent" | "partner" | "ledger" | "cash";
 
 export interface JournalEntry {
   id: string; entry_no: string; entry_date: string; description: string | null; reference: string | null;
-  dr_type: AccType; dr_agent_id: string | null; dr_partner_id: string | null; dr_ledger_id: string | null; dr_amount: number; dr_currency: string; dr_invoice_id: string | null; dr_bill_id: string | null;
-  cr_type: AccType; cr_agent_id: string | null; cr_partner_id: string | null; cr_ledger_id: string | null; cr_amount: number; cr_currency: string; cr_invoice_id: string | null; cr_bill_id: string | null;
+  dr_type: AccType; dr_agent_id: string | null; dr_partner_id: string | null; dr_ledger_id: string | null; dr_cash_id?: string | null; dr_amount: number; dr_currency: string; dr_invoice_id: string | null; dr_bill_id: string | null;
+  cr_type: AccType; cr_agent_id: string | null; cr_partner_id: string | null; cr_ledger_id: string | null; cr_cash_id?: string | null; cr_amount: number; cr_currency: string; cr_invoice_id: string | null; cr_bill_id: string | null;
   fx_rate: number | null; fx_source: "auto" | "manual" | null; voided: boolean; void_reason: string | null; created_by: string | null; created_at: string;
 }
-export interface LedgerAccount { id: string; code: string; name_en: string; name_ar: string | null; kind: string; active: boolean }
+export interface LedgerAccount { id: string; code: string; name_en: string; name_ar: string | null; kind: string; active: boolean; parent_id: string | null; is_group: boolean; subledger: string | null; sort_order?: number }
+
+/** Id of the account on one side of an entry, whatever its type. */
+export const sideId = (e: JournalEntry, s: "dr" | "cr") => (e[`${s}_agent_id`] ?? e[`${s}_partner_id`] ?? e[`${s}_ledger_id`] ?? e[`${s}_cash_id`] ?? null) as string | null;
 
 export const LEDGER_KINDS: Record<string, { en: string; ar: string }> = {
   income: { en: "Income", ar: "إيرادات" }, expense: { en: "Expense", ar: "مصروفات" }, equity: { en: "Equity", ar: "حقوق ملكية" },
@@ -18,6 +21,10 @@ export const LEDGER_KINDS: Record<string, { en: string; ar: string }> = {
 
 /** Ready-made patterns: one side is a ledger account (by code), the other is chosen by the user. */
 export const TEMPLATES: { key: string; en: string; ar: string; dr: AccType | string; cr: AccType | string; hint: string }[] = [
+  { key: "box_expense", en: "Expense paid from a box", ar: "مصروف من صندوق", dr: "5200", cr: "cash", hint: "Dr an expense account / Cr the cash box — the money leaves the box (payment voucher CP- is created)." },
+  { key: "box_income", en: "Income received into a box", ar: "إيراد في صندوق", dr: "cash", cr: "4900", hint: "Dr the cash box / Cr an income account — the money enters the box (receipt voucher CR- is created)." },
+  { key: "box_agent", en: "Agent pays into a box", ar: "قبض من مندوب في صندوق", dr: "cash", cr: "agent", hint: "Dr the cash box / Cr the agent — reduces what the agent owes." },
+  { key: "box_partner", en: "Pay a lab / clinic from a box", ar: "سداد لشريك من صندوق", dr: "partner", cr: "cash", hint: "Dr the lab / clinic / Cr the cash box — reduces what RUKN owes them." },
   { key: "discount_allowed", en: "Discount allowed", ar: "خصم مسموح به", dr: "5100", cr: "agent", hint: "Dr Discount allowed / Cr Agent — reduces what the agent owes." },
   { key: "discount_earned", en: "Discount earned", ar: "خصم مكتسب", dr: "partner", cr: "4200", hint: "Dr Lab / clinic / Cr Discount earned — reduces what RUKN owes them." },
   { key: "extra_agent", en: "Charge an agent for other services", ar: "إضافة خدمات على مندوب", dr: "agent", cr: "4100", hint: "Dr Agent / Cr Revenue — other services: adds to what the agent owes." },
@@ -81,18 +88,20 @@ export async function docCredits(db: Db, by: { invoiceIds?: string[]; billIds?: 
 export async function accountNames(db: Db, entries: JournalEntry[]) {
   const agents = [...new Set(entries.flatMap((e) => [e.dr_agent_id, e.cr_agent_id]).filter(Boolean))] as string[];
   const partners = [...new Set(entries.flatMap((e) => [e.dr_partner_id, e.cr_partner_id]).filter(Boolean))] as string[];
-  const [{ data: a }, { data: p }, { data: l }] = await Promise.all([
+  const [{ data: a }, { data: p }, { data: l }, { data: boxes }] = await Promise.all([
     agents.length ? db.from("profiles").select("id,full_name,email").in("id", agents) : Promise.resolve({ data: [] }),
     partners.length ? db.from("partners").select("id,name,kind").in("id", partners) : Promise.resolve({ data: [] }),
     db.from("ledger_accounts").select("id,code,name_en,name_ar"),
+    db.from("cash_accounts").select("id,name,currency"),
   ]);
   const m = new Map<string, { en: string; ar: string; kind: string }>();
   for (const x of a ?? []) m.set(`agent:${x.id}`, { en: (x.full_name || x.email) as string, ar: "مندوب", kind: "Agent" });
   for (const x of p ?? []) m.set(`partner:${x.id}`, { en: x.name as string, ar: x.kind === "lab" ? "معمل" : "عيادة", kind: x.kind === "lab" ? "Lab" : "Clinic" });
   for (const x of l ?? []) m.set(`ledger:${x.id}`, { en: `${x.code} ${x.name_en}`, ar: (x.name_ar as string) ?? "", kind: "Account" });
+  for (const x of boxes ?? []) m.set(`cash:${x.id}`, { en: `${x.name} (${x.currency})`, ar: "صندوق", kind: "Cash box" });
   const side = (e: JournalEntry, s: "dr" | "cr") => {
-    const t = e[`${s}_type`]; const id = (t === "agent" ? e[`${s}_agent_id`] : t === "partner" ? e[`${s}_partner_id`] : e[`${s}_ledger_id`]) as string;
-    return m.get(`${t}:${id}`) ?? { en: t === "agent" ? "Agent" : t === "partner" ? "Partner" : "Account", ar: "", kind: t };
+    const t = e[`${s}_type`]; const id = sideId(e, s);
+    return m.get(`${t}:${id}`) ?? { en: t === "agent" ? "Agent" : t === "partner" ? "Partner" : t === "cash" ? "Cash box" : "Account", ar: "", kind: t };
   };
   return { side };
 }

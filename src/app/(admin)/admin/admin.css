@@ -243,7 +243,7 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .picker-list { position: absolute; z-index: 30; inset-inline: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(16, 38, 61, .12); max-height: 320px; overflow-y: auto; }
 .picker-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
 .picker-list li.hi { background: #eef6f9; }
-.voucher-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+.voucher-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
 .voucher-search input[type=search] { flex: 1 1 260px; }
 
 /* Journal entry form */
@@ -256,3 +256,16 @@ a.stat-link:hover { border-color: var(--teal); box-shadow: 0 4px 14px rgba(22,12
 .jv-swap { align-self: center; }
 @media (max-width: 860px) { .jv-sides { grid-template-columns: 1fr; } .jv-swap { justify-self: center; } }
 table.data tr.total-row td { background: #f6f8fb; border-top: 2px solid var(--line); }
+
+/* Chart of accounts tree */
+.coa-list { list-style: none; margin: 0; padding: 0; }
+.coa-list details > summary { list-style: none; cursor: pointer; }
+.coa-list details > summary::-webkit-details-marker { display: none; }
+.coa-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 150px 190px 70px; gap: 10px; align-items: center; padding: 8px; border-bottom: 1px solid var(--line); }
+.coa-row.group { background: #fafbfd; }
+.coa-row.group .coa-code::before { content: "▸ "; color: var(--muted); }
+.coa-list details[open] > summary .coa-row.group .coa-code::before { content: "▾ "; }
+.coa-row.inactive { opacity: .55; }
+.coa-head { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; background: #fafbfd; }
+.coa-bal { text-align: end; }
+@media (max-width: 860px) { .coa-row { grid-template-columns: 90px minmax(0, 1fr) 130px; } .coa-type, .coa-act { display: none; } }

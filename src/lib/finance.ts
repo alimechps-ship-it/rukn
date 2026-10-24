@@ -35,6 +35,7 @@ export const OUT_CATEGORIES: Record<string, { en: string; ar: string }> = {
 export const ALL_CATEGORIES: Record<string, { en: string; ar: string }> = {
   case_payment: { en: "Case payment", ar: "تحصيل حالة" },
   transfer: { en: "Transfer", ar: "تحويل بين الصناديق" },
+  journal: { en: "Journal entry", ar: "قيد يومية" },
   ...IN_CATEGORIES,
   ...OUT_CATEGORIES,
 };
@@ -140,7 +141,7 @@ export interface CashAccount { id: string; name: string; kind: string; currency:
 export interface CashEntry {
   id: string; entry_no: string; account_id: string; direction: "in" | "out"; amount: number; currency: string; entry_date: string; category: string;
   party_user: string | null; party_name: string | null; description: string | null; reference: string | null; case_id: string | null;
-  case_payment_id: string | null; transfer_group: string | null; partner_id: string | null; partner_payment_id: string | null; agent_id?: string | null; voided: boolean; void_reason: string | null; created_by: string | null; created_at: string;
+  case_payment_id: string | null; transfer_group: string | null; partner_id: string | null; partner_payment_id: string | null; agent_id?: string | null; journal_id?: string | null; voided: boolean; void_reason: string | null; created_by: string | null; created_at: string;
 }
 
 export async function accountsWithBalance(db: Db) {

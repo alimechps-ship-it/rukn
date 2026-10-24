@@ -7,7 +7,7 @@ import { peopleWithRole, profileMap } from "@/lib/case-data";
 import { fmtDay, fmtMoney } from "@/lib/cases";
 import { loadReceivables, voucherParties } from "@/lib/finance";
 import { loadRates } from "@/lib/fx";
-import { accountNames, LEDGER_KINDS, TEMPLATES, type JournalEntry, type LedgerAccount } from "@/lib/journal";
+import { accountNames, LEDGER_KINDS, sideId, TEMPLATES, type JournalEntry, type LedgerAccount } from "@/lib/journal";
 import { createJournal, saveLedgerAccount, voidJournal } from "../../_actions/journal";
 
 export const metadata = { title: "Journal entries" };
@@ -19,17 +19,19 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   await requireStaff(can.finance);
   const db = await createSessionClient();
-  const [agents, parties, rec, rates, { data: ledgerRows }, { data: rows }] = await Promise.all([
+  const [agents, parties, rec, rates, { data: ledgerRows }, { data: rows }, { data: boxes }] = await Promise.all([
     peopleWithRole(db, ["agent"]),
     voucherParties(db),
     loadReceivables(db, {}),
     loadRates(db),
     db.from("ledger_accounts").select("*").order("code"),
     db.from("journal_entries").select("*").order("created_at", { ascending: false }).limit(1000),
+    db.from("cash_accounts").select("id,name,currency,kind,active").eq("active", true).order("sort_order"),
   ]);
   const ledgers = (ledgerRows ?? []) as LedgerAccount[];
   const accounts: JAccount[] = [
-    ...ledgers.filter((l) => l.active).map((l) => ({ key: `ledger:${l.id}`, type: "ledger" as const, id: l.id, name: `${l.name_en}${l.name_ar ? ` · ${l.name_ar}` : ""}`, sub: LEDGER_KINDS[l.kind]?.ar ?? "", badge: "Account · حساب", currency: null, code: l.code })),
+    ...ledgers.filter((l) => l.active && !l.is_group).map((l) => ({ key: `ledger:${l.id}`, type: "ledger" as const, id: l.id, name: `${l.name_en}${l.name_ar ? ` · ${l.name_ar}` : ""}`, sub: LEDGER_KINDS[l.kind]?.ar ?? "", badge: "Account · حساب", currency: null, code: l.code })),
+    ...(boxes ?? []).map((b) => ({ key: `cash:${b.id}`, type: "cash" as const, id: b.id as string, name: b.name as string, sub: `${b.currency} · ${b.kind === "bank" ? "bank · بنك" : b.kind === "wallet" ? "wallet · محفظة" : "cash · نقدي"}`, badge: "Cash box · صندوق", currency: b.currency as string })),
     ...agents.map((a) => ({ key: `agent:${a.id}`, type: "agent" as const, id: a.id, name: a.name, sub: a.label.replace(a.name, "").replace(/^\s*·\s*/, ""), badge: "Agent · مندوب", currency: null })),
     ...parties.partners.filter((p) => p.active).map((p) => ({ key: `partner:${p.id}`, type: "partner" as const, id: p.id, name: p.name, sub: [p.contact, p.phone, p.city].filter(Boolean).join(" · "), badge: p.kind === "lab" ? "Lab · معمل" : "Clinic · عيادة", currency: p.currency })),
   ];
@@ -43,8 +45,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const people = await profileMap(db, all.map((e) => e.created_by));
   // account filter → that account's movements with running balance (Dr + / Cr −)
   const [fType, fId] = (sp.account ?? "").split(":");
-  const filter = ["agent", "partner", "ledger"].includes(fType) && UUID.test(fId ?? "") ? { type: fType, id: fId } : null;
-  const touches = (e: JournalEntry, s: "dr" | "cr") => !!filter && e[`${s}_type`] === filter.type && (e[`${s}_agent_id`] ?? e[`${s}_partner_id`] ?? e[`${s}_ledger_id`]) === filter.id;
+  const filter = ["agent", "partner", "ledger", "cash"].includes(fType) && UUID.test(fId ?? "") ? { type: fType, id: fId } : null;
+  const touches = (e: JournalEntry, s: "dr" | "cr") => !!filter && e[`${s}_type`] === filter.type && sideId(e, s) === filter.id;
   const q = (sp.q ?? "").trim().toLowerCase();
   let list = all.filter((e) => (!filter || touches(e, "dr") || touches(e, "cr"))
     && (!q || [e.entry_no, e.description, e.reference, names.side(e, "dr").en, names.side(e, "cr").en, names.side(e, "dr").ar, names.side(e, "cr").ar].some((v) => v?.toLowerCase().includes(q))));
@@ -104,8 +106,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                     <tr key={e.id} style={e.voided ? { opacity: 0.5 } : undefined}>
                       <td className="mono nowrap">{e.entry_no}{e.voided ? <div><span className="pill closed">void</span></div> : null}</td>
                       <td className="small nowrap">{fmtDay(e.entry_date)}</td>
-                      <td className="small"><Link href={`/admin/finance/journal?account=${e.dr_type}:${e.dr_agent_id ?? e.dr_partner_id ?? e.dr_ledger_id}`}><strong>{d.en}</strong></Link>{d.ar ? <div className="muted">{d.ar}</div> : null}<div className="nowrap" style={{ color: "#b42318" }}>{fmtMoney(e.dr_amount, e.dr_currency)}</div></td>
-                      <td className="small"><Link href={`/admin/finance/journal?account=${e.cr_type}:${e.cr_agent_id ?? e.cr_partner_id ?? e.cr_ledger_id}`}><strong>{c.en}</strong></Link>{c.ar ? <div className="muted">{c.ar}</div> : null}<div className="nowrap" style={{ color: "#067647" }}>{fmtMoney(e.cr_amount, e.cr_currency)}</div></td>
+                      <td className="small"><Link href={`/admin/finance/journal?account=${e.dr_type}:${sideId(e, "dr")}`}><strong>{d.en}</strong></Link>{d.ar ? <div className="muted">{d.ar}</div> : null}<div className="nowrap" style={{ color: "#b42318" }}>{fmtMoney(e.dr_amount, e.dr_currency)}</div></td>
+                      <td className="small"><Link href={`/admin/finance/journal?account=${e.cr_type}:${sideId(e, "cr")}`}><strong>{c.en}</strong></Link>{c.ar ? <div className="muted">{c.ar}</div> : null}<div className="nowrap" style={{ color: "#067647" }}>{fmtMoney(e.cr_amount, e.cr_currency)}</div></td>
                       <td className="small">{e.description}{e.fx_rate ? <div className="muted">1 {e.dr_currency} = {Number(e.fx_rate)} {e.cr_currency} ({e.fx_source === "auto" ? "auto" : "manual"})</div> : null}{e.reference ? <div className="muted">Ref. {e.reference}</div> : null}{e.voided && e.void_reason ? <div className="muted">Void: {e.void_reason}</div> : null}<div className="muted">{people.get(e.created_by ?? "")?.name ?? ""}</div></td>
                       {filter ? <td className="num nowrap small"><strong>{running.has(e.id) ? mm(running.get(e.id)!) : ""}</strong></td> : null}
                       <td className="nowrap">
@@ -131,46 +133,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
       </section>
 
       <section className="panel" id="accounts">
-        <h2>General accounts · دليل الحسابات العامة</h2>
-        <p className="small muted" style={{ marginTop: -6 }}>Agents and labs / clinics are accounts automatically. Here are the other accounts used in entries. Balance: Dr = debit balance, Cr = credit balance.</p>
-        <div className="table-scroll">
-          <table className="data">
-            <thead><tr><th>Code</th><th>Account</th><th>Type</th><th className="num">Balance</th><th /></tr></thead>
-            <tbody>
-              {ledgers.map((l) => (
-                <tr key={l.id} style={l.active ? undefined : { opacity: 0.5 }}>
-                  <td className="mono">{l.code}</td>
-                  <td><Link href={`/admin/finance/journal?account=ledger:${l.id}`}><strong>{l.name_en}</strong></Link>{l.name_ar ? <div className="small muted" dir="rtl">{l.name_ar}</div> : null}</td>
-                  <td className="small">{LEDGER_KINDS[l.kind]?.en} · {LEDGER_KINDS[l.kind]?.ar}</td>
-                  <td className="num small nowrap">{mm(lb.get(l.id) ?? new Map())}</td>
-                  <td>
-                    <details className="inline-details">
-                      <summary className="btn secondary small">Edit</summary>
-                      <ActionForm action={saveLedgerAccount.bind(null, l.id)} className="form-grid inline-form wide">
-                        <div className="field"><label>Code</label><input type="text" name="code" defaultValue={l.code} maxLength={12} /></div>
-                        <div className="field"><label>Type</label><select name="kind" defaultValue={l.kind}>{Object.entries(LEDGER_KINDS).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}</select></div>
-                        <div className="field"><label>Name (English)</label><input type="text" name="name_en" defaultValue={l.name_en} maxLength={120} /></div>
-                        <div className="field"><label>Name (Arabic)</label><input type="text" name="name_ar" defaultValue={l.name_ar ?? ""} maxLength={120} dir="rtl" /></div>
-                        <div className="field"><label className="small"><input type="checkbox" name="active" defaultChecked={l.active} /> Active</label></div>
-                        <div className="full"><SubmitButton className="btn small">Save</SubmitButton></div>
-                      </ActionForm>
-                    </details>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <details style={{ marginTop: 12 }}>
-          <summary><strong>+ Add an account · إضافة حساب</strong></summary>
-          <ActionForm action={saveLedgerAccount.bind(null, null)} className="form-grid" resetOnSuccess>
-            <div className="field"><label htmlFor="la-code">Code *</label><input id="la-code" type="text" name="code" maxLength={12} required placeholder="e.g. 5400" /></div>
-            <div className="field"><label htmlFor="la-kind">Type</label><select id="la-kind" name="kind" defaultValue="expense">{Object.entries(LEDGER_KINDS).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}</select></div>
-            <div className="field"><label htmlFor="la-en">Name (English) *</label><input id="la-en" type="text" name="name_en" maxLength={120} required /></div>
-            <div className="field"><label htmlFor="la-ar">Name (Arabic)</label><input id="la-ar" type="text" name="name_ar" maxLength={120} dir="rtl" /></div>
-            <div className="full"><SubmitButton className="btn teal">Add account</SubmitButton></div>
-          </ActionForm>
-        </details>
+        <div className="panel-head"><h2>Chart of accounts · شجرة الحسابات</h2><Link className="btn secondary small" href="/admin/finance/accounts">Open the account tree →</Link></div>
+        <p className="small muted" style={{ margin: 0 }}>Add, rename or move accounts and see the balance of every account and main account in the tree.</p>
       </section>
     </>
   );

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { loadCurrencies } from "@/lib/currency-list";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ConfirmAction } from "@/components/admin/ConfirmAction";
@@ -96,6 +97,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
             header={{ currency: inv.currency, issue_date: inv.issue_date, due_date: inv.due_date, bill_to: inv.bill_to, discount_amount: Number(inv.discount_amount), tax_label: inv.tax_label, tax_rate: Number(inv.tax_rate), notes: inv.notes }}
             lines={lines}
             catalog={(catalog ?? []) as PriceItem[]}
+            currencies={await loadCurrencies()}
           />
           {!(catalog ?? []).length ? <p className="small muted">The price list is empty — add items under <Link href="/admin/price-list">Price list</Link>, or type the lines directly.</p> : null}
         </section>

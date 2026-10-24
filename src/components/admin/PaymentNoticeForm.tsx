@@ -6,6 +6,7 @@ import { createBrowserSupabase } from "@/lib/supabase/browser";
 import { registerCaseFile } from "@/app/(admin)/admin/(panel)/_actions/cases";
 import { submitPaymentNotice } from "@/app/(admin)/admin/(panel)/_actions/payments";
 import { MAX_FILE_BYTES, PAYMENT_METHODS } from "@/lib/cases";
+import { CurrencySelect } from "./CurrencySelect";
 
 type Inv = { id: string; invoice_no: string; currency: string; balance: number; case_id?: string; code?: string };
 const PROOF_EXT = ["pdf", "jpg", "jpeg", "png", "webp", "heic"];
@@ -14,7 +15,7 @@ const PROOF_EXT = ["pdf", "jpg", "jpeg", "png", "webp", "heic"];
  * Agent: "I sent a payment" — with the transfer details and a photo / PDF of the receipt.
  * On a case page (caseId), or from "My account" (agentId): for any open invoice, or on account / as an advance.
  */
-export function PaymentNoticeForm({ caseId, agentId, invoices, defaultCurrency }: { caseId?: string; agentId?: string; invoices: Inv[]; defaultCurrency: string }) {
+export function PaymentNoticeForm({ caseId, agentId, invoices, defaultCurrency, currencies }: { caseId?: string; agentId?: string; invoices: Inv[]; defaultCurrency: string; currencies: string[] }) {
   const open = invoices.filter((i) => i.balance > 0);
   const [invoiceId, setInvoiceId] = useState(open[0]?.id ?? "");
   const inv = invoices.find((i) => i.id === invoiceId);
@@ -74,7 +75,7 @@ export function PaymentNoticeForm({ caseId, agentId, invoices, defaultCurrency }
         </div>
       ) : null}
       <div className="field"><label htmlFor="pn-amt">Amount paid · المبلغ *</label><input id="pn-amt" type="number" name="amount" min="0.01" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-      <div className="field"><label htmlFor="pn-cur">Currency · العملة</label><input id="pn-cur" type="text" maxLength={3} value={inv?.currency ?? currency} disabled={Boolean(inv)} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></div>
+      <div className="field"><label htmlFor="pn-cur">Currency · العملة</label><CurrencySelect id="pn-cur" options={currencies} value={inv?.currency ?? currency} disabled={Boolean(inv)} onChange={(e) => setCurrency(e.target.value)} /></div>
       <div className="field"><label htmlFor="pn-method">Paid by · طريقة الدفع</label>
         <select id="pn-method" name="method" defaultValue="bank_transfer">{Object.entries(PAYMENT_METHODS).map(([k, m]) => <option key={k} value={k}>{m.en} · {m.ar}</option>)}</select>
       </div>

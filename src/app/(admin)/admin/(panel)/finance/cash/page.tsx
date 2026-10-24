@@ -7,6 +7,7 @@ import { saveCashAccount, transferCash } from "../../_actions/finance";
 import { TransferForm } from "@/components/admin/TransferForm";
 import { fmtRate, loadRates, ratesMap, refreshAutoRates, totalIn } from "@/lib/fx";
 import { EntriesTable, NewEntryForm } from "../CashForms";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export const metadata = { title: "Cash boxes" };
 const fmt = (n: number, c: string) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c}`;
@@ -109,7 +110,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
                       <ActionForm action={saveCashAccount.bind(null, a.id)} className="form-grid inline-form wide">
                         <div className="field"><label htmlFor={`n-${a.id}`}>Name</label><input id={`n-${a.id}`} type="text" name="name" defaultValue={a.name} maxLength={80} /></div>
                         <div className="field"><label htmlFor={`k-${a.id}`}>Type</label><select id={`k-${a.id}`} name="kind" defaultValue={a.kind}>{Object.entries(CASH_KINDS).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}</select></div>
-                        <div className="field"><label htmlFor={`c-${a.id}`}>Currency</label><input id={`c-${a.id}`} type="text" name="currency" defaultValue={a.currency} maxLength={3} /></div>
+                        <CurrencyField id={`c-${a.id}`} name="currency" defaultValue={a.currency} />
                         <div className="field"><label htmlFor={`cu-${a.id}`}>Custodian · أمين الصندوق</label><select id={`cu-${a.id}`} name="custodian" defaultValue={a.custodian ?? ""}><option value="">—</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                         <div className="field"><label htmlFor={`o-${a.id}`}>Opening balance</label><input id={`o-${a.id}`} type="number" name="opening_balance" min="0" step="0.01" defaultValue={Number(a.opening_balance)} /></div>
                         <div className="field"><label htmlFor={`s-${a.id}`}>Order</label><input id={`s-${a.id}`} type="number" name="sort_order" defaultValue={a.sort_order} /></div>
@@ -129,7 +130,7 @@ export default async function CashPage({ searchParams }: { searchParams: Promise
           <ActionForm action={saveCashAccount.bind(null, null)} className="form-grid" resetOnSuccess>
             <div className="field"><label htmlFor="na-name">Name *</label><input id="na-name" type="text" name="name" maxLength={80} required placeholder="e.g. Petty cash — Cairo office" /></div>
             <div className="field"><label htmlFor="na-kind">Type</label><select id="na-kind" name="kind">{Object.entries(CASH_KINDS).map(([k, v]) => <option key={k} value={k}>{v.en} · {v.ar}</option>)}</select></div>
-            <div className="field"><label htmlFor="na-cur">Currency</label><input id="na-cur" type="text" name="currency" defaultValue="EGP" maxLength={3} /></div>
+            <CurrencyField id="na-cur" name="currency" defaultValue="EGP" />
             <div className="field"><label htmlFor="na-open">Opening balance</label><input id="na-open" type="number" name="opening_balance" min="0" step="0.01" defaultValue={0} /></div>
             <div className="field"><label htmlFor="na-cu">Custodian</label><select id="na-cu" name="custodian"><option value="">—</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div className="field"><label htmlFor="na-notes">Notes</label><input id="na-notes" type="text" name="notes" maxLength={500} /></div>

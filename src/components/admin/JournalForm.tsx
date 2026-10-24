@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ActionForm, SubmitButton, type ActionResult } from "./ActionForm";
+import { CurrencySelect } from "./CurrencySelect";
 
 type Action = (prev: ActionResult, fd: FormData) => Promise<ActionResult>;
 type T = "agent" | "partner" | "ledger" | "cash";
@@ -127,7 +128,7 @@ export function JournalForm({ action, accounts, docs, templates, perUsd, preset 
             </select>
           </div>
         ) : <input type="hidden" name={`${s}_doc`} value="" />}
-        <div className="form-grid" style={{ gridTemplateColumns: "1fr 90px" }}>
+        <div className="form-grid" style={{ gridTemplateColumns: "1fr 150px" }}>
           {s === "dr" ? (
             <div className="field"><label htmlFor="jv-amt">Amount · المبلغ *</label><input id="jv-amt" type="number" name="dr_amount" min="0.01" step="0.01" required value={amount} onChange={(e) => { setAmount(e.target.value); setCrAmt(null); }} /></div>
           ) : (
@@ -137,8 +138,8 @@ export function JournalForm({ action, accounts, docs, templates, perUsd, preset 
             </div>
           )}
           <div className="field"><label htmlFor={`jv-${s}-cur`}>Currency</label>
-            <input id={`jv-${s}-cur`} type="text" name={`${s}_currency`} maxLength={3} value={s === "dr" ? drCur : crCur} readOnly={a?.type === "cash"} title={a?.type === "cash" ? "The currency of the cash box" : undefined}
-              onChange={(e) => { (s === "dr" ? setDrCur : setCrCur)(e.target.value.toUpperCase()); setRate(null); setCrAmt(null); }} />
+            <CurrencySelect id={`jv-${s}-cur`} name={`${s}_currency`} short options={Object.keys(perUsd)} value={s === "dr" ? drCur : crCur} locked={a?.type === "cash"} title={a?.type === "cash" ? "The currency of the cash box" : undefined}
+              onChange={(e) => { (s === "dr" ? setDrCur : setCrCur)(e.target.value); setRate(null); setCrAmt(null); }} />
           </div>
         </div>
       </div>

@@ -5,6 +5,8 @@ import { can, requireStaff } from "@/lib/auth";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { cross, fmtRate, FX_MAX_AGE_HOURS, loadRates, ratesMap, refreshAutoRates } from "@/lib/fx";
+import { CurrencySelect } from "@/components/admin/CurrencySelect";
+import { CURRENCY_NAMES } from "@/lib/currencies";
 import { deleteRate, saveRate, unlockRate, updateRatesNow } from "../../_actions/finance";
 
 export const metadata = { title: "Exchange rates" };
@@ -75,7 +77,7 @@ export default async function RatesPage() {
         <details style={{ marginTop: 12 }} open={missing.length > 0}>
           <summary><strong>+ Add a currency · إضافة عملة</strong></summary>
           <ActionForm action={saveRate} className="form-grid" resetOnSuccess>
-            <div className="field"><label htmlFor="nr-cur">Currency code</label><input id="nr-cur" type="text" name="currency" maxLength={3} required defaultValue={missing[0] ?? ""} placeholder="e.g. QAR" /></div>
+            <div className="field"><label htmlFor="nr-cur">Currency · العملة</label><CurrencySelect id="nr-cur" name="currency" required options={[...missing, ...Object.keys(CURRENCY_NAMES).filter((c) => !fx.has(c))]} defaultValue={missing[0] ?? Object.keys(CURRENCY_NAMES).find((c) => !fx.has(c)) ?? ""} /></div>
             <div className="field"><label htmlFor="nr-rate">1 USD =</label><input id="nr-rate" type="number" name="per_usd" step="any" min="0" required /></div>
             <div className="field"><label className="small"><input type="checkbox" name="locked" /> Lock (do not update automatically)</label></div>
             <div className="full"><SubmitButton className="btn teal">Add currency</SubmitButton></div>

@@ -69,6 +69,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - Issued invoices can be edited; the number is kept and each save is a numbered revision logged on the case timeline and in the audit log. Voided invoices stay locked.
   - **Receivables**: unpaid issued invoices with ageing (not due / 1–30 / 31–60 / 61–90 / 90+), by agent, cases without an invoice; print + CSV.
   - **Cash boxes**: cash / bank / wallet boxes, receipt vouchers `CR-`, payment vouchers `CP-`, transfers `TR-` (with exchange), statements with running balance; a box can never pay out more than its balance. A case payment can be deposited into a box in one step. Vouchers print with the amount in words (English + Arabic).
+  - **Currencies**: every currency field is a drop-down of the currencies on *Exchange rates* (add a new one there, from a list of world currencies; migration `20261024002100_currency_codes.sql`).
   - **Person accounts**: what each person took (custody, withdrawals, salaries…) and returned, with printable statements. Agents are never custody: their receipts, vouchers to / from them (also when their name is typed) go to their own account (migration `20261024002000_agent_not_custody.sql`).
 - **Agent confirmations & payments** (migration `20261022000900_agent_receipts_payments.sql`):
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
@@ -222,7 +223,7 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (310 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (312 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Advance settlement** (9 checks: new agent pays an advance, later invoices are settled oldest first, receivables, statement, agent money never shown as custody): see `tests/e2e/advance_settlement_flow.py`.
 - **Payments on account / advances** (12 checks: balance banner, My account form, advance without a case, invoice notice from the account page, finance confirmation into a box, statement, receipt print): see `tests/e2e/account_payments_flow.py`.

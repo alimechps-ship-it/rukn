@@ -28,6 +28,8 @@ import { DISPATCH_STATUS } from "@/lib/dispatch";
 import { WO_STATUS, WORK_KINDS, type WorkOrder } from "@/lib/partners";
 import { INVOICE_STATUS } from "@/lib/invoices";
 import { CaseFormFields } from "../CaseForm";
+import { CurrencyField } from "@/components/admin/CurrencyField";
+import { loadCurrencies } from "@/lib/currency-list";
 
 export const metadata = { title: "Case" };
 
@@ -440,7 +442,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
               <details style={{ marginTop: 12 }} open={pendingNotices.length === 0 && invoicesForAgent.some((i) => i.balance > 0)}>
                 <summary><strong>💳 I sent a payment · إرسال دفعة للشركة</strong></summary>
                 <p className="small muted">Tell RUKN about a transfer you made. Attach a photo or PDF of the transfer receipt — RUKN confirms it and issues the official receipt.</p>
-                <PaymentNoticeForm caseId={c.id} invoices={invoicesForAgent} defaultCurrency={qCur ?? "USD"} />
+                <PaymentNoticeForm caseId={c.id} invoices={invoicesForAgent} defaultCurrency={qCur ?? "USD"} currencies={await loadCurrencies()} />
               </details>
             ) : null}
             {fin ? (
@@ -449,7 +451,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                   <summary className="small"><strong>Set quotation</strong></summary>
                   <ActionForm action={saveQuote.bind(null, c.id)} className="form-grid">
                     <Text name="quote_amount" label="Amount" type="number" defaultValue={qAmount ?? ""} />
-                    <Text name="quote_currency" label="Currency" defaultValue={qCur ?? "USD"} maxLength={3} />
+                    <CurrencyField id="quote_currency" name="quote_currency" defaultValue={qCur ?? "USD"} />
                     <div className="full"><SubmitButton className="btn secondary">Save quotation</SubmitButton></div>
                   </ActionForm>
                 </details>
@@ -461,7 +463,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
                         options={[{ value: "", label: "— not linked to an invoice —" }, ...issuedInvoices.map((i) => ({ value: i.id, label: `${i.invoice_no} · balance ${fmtMoney(Number(i.total) - paidOn(i.id), i.currency)}` }))]} />
                     ) : null}
                     <Text name="amount" label="Amount *" type="number" />
-                    <Text name="currency" label="Currency *" defaultValue={qCur ?? "USD"} maxLength={3} />
+                    <CurrencyField id="currency" name="currency" label="Currency · العملة *" defaultValue={qCur ?? "USD"} required />
                     <Select name="method" label="Method" defaultValue="bank_transfer" options={Object.entries(PAYMENT_METHODS).map(([k, m]) => ({ value: k, label: m.en }))} />
                     <Text name="paid_at" label="Date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
                     <Text name="reference" label="Reference (transfer no.)" maxLength={120} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CurrencySelect } from "./CurrencySelect";
 import { ActionForm, SubmitButton } from "./ActionForm";
 import type { ActionResult } from "./ActionForm";
 import { invoiceTotals, LINE_ARCHES, PRICE_CATEGORIES, type InvoiceLine, type PriceItem } from "@/lib/invoices";
@@ -18,7 +19,7 @@ const money = (n: number, cur: string) => {
   try { return new Intl.NumberFormat("en-US", { style: "currency", currency: cur || "USD" }).format(n); } catch { return `${n.toFixed(2)} ${cur}`; }
 };
 
-export function InvoiceEditor({ action, header, lines, catalog, issued = false, revision = 0 }: { action: Action; header: Header; lines: InvoiceLine[]; catalog: PriceItem[]; issued?: boolean; revision?: number }) {
+export function InvoiceEditor({ action, header, lines, catalog, currencies, issued = false, revision = 0 }: { action: Action; header: Header; lines: InvoiceLine[]; catalog: PriceItem[]; currencies: string[]; issued?: boolean; revision?: number }) {
   const [rows, setRows] = useState<Row[]>(() => (lines.length ? lines.map((l) => ({ ...l, key: ++seq })) : [blank()]));
   const [currency, setCurrency] = useState(header.currency);
   const [discount, setDiscount] = useState(String(header.discount_amount ?? 0));
@@ -56,7 +57,7 @@ export function InvoiceEditor({ action, header, lines, catalog, issued = false, 
       <input type="hidden" name="lines" value={payload} />
       <div className="form-grid">
         <div className="field"><label htmlFor="inv-currency">Currency · العملة</label>
-          <input id="inv-currency" type="text" name="currency" value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} required />
+          <CurrencySelect id="inv-currency" name="currency" options={currencies} value={currency} onChange={(e) => setCurrency(e.target.value)} required />
         </div>
         <div className="field"><label htmlFor="inv-issue">Invoice date · تاريخ الفاتورة</label><input id="inv-issue" name="issue_date" type="date" defaultValue={header.issue_date} /></div>
         <div className="field"><label htmlFor="inv-due">Due date · تاريخ الاستحقاق</label><input id="inv-due" name="due_date" type="date" defaultValue={header.due_date ?? ""} /></div>

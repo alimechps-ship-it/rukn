@@ -61,7 +61,7 @@ with sync_playwright() as p:
     fin.goto(case_url)
     fin.get_by_role("button", name="+ New invoice").click()
     fin.wait_for_url(re.compile(r"/invoices/[0-9a-f-]{36}"), timeout=20000)
-    fin.fill("#inv-currency", "USD")
+    fin.select_option("#inv-currency", "USD")
     fin.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Description (English)']").fill("Clear aligners — comprehensive treatment")
     fin.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Unit price']").fill("1200")
     fin.get_by_role("button", name="Issue invoice · إصدار الفاتورة").click()

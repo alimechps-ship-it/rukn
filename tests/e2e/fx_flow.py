@@ -87,7 +87,7 @@ with sync_playwright() as p:
         fin.goto(f"{BASE}/admin/finance/cash")
         fin.locator("summary", has_text="Add a cash box").click()
         fin.fill("#na-name", name)
-        fin.fill("#na-cur", cur)
+        fin.select_option("#na-cur", cur)
         fin.fill("#na-open", opening)
         fin.get_by_role("button", name="Add box").click()
         ok(fin, "")

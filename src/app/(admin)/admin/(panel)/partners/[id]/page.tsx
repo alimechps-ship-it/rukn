@@ -9,6 +9,7 @@ import { fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
 import { costsFor, mm, PARTNER_KINDS, partnerBalances, type Partner, type WorkOrder } from "@/lib/partners";
 import { payPartner, voidPartnerPayment } from "../../_actions/partners";
 import { BillsTable, NewBillForm, PartnerForm, WorkOrdersTable, type Bill } from "../PartnerParts";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export const metadata = { title: "Partner" };
 
@@ -86,7 +87,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
                 </select>
               </div>
               <div className="field"><label htmlFor="pp-amt">Amount *</label><input id="pp-amt" type="number" name="amount" min="0.01" step="0.01" required defaultValue={approved[0] ? Number(approved[0].total) - (paidByBill.get(approved[0].id) ?? 0) : ""} /></div>
-              <div className="field"><label htmlFor="pp-cur">Currency</label><input id="pp-cur" type="text" name="currency" maxLength={3} defaultValue={partner.currency} /></div>
+              <CurrencyField id="pp-cur" name="currency" defaultValue={partner.currency} />
               <div className="field full"><label htmlFor="pp-box">Paid from cash box · من صندوق</label>
                 <select id="pp-box" name="cash_account_id" defaultValue={(boxes ?? []).find((x) => x.currency === partner.currency)?.id ?? ""}>
                   <option value="">— not from a box (record only) —</option>

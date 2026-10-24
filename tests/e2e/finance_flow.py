@@ -64,7 +64,7 @@ with sync_playwright() as p:
     cm.get_by_role("button", name="+ New invoice").click()
     cm.wait_for_url(re.compile(r"/invoices/[0-9a-f-]{36}"), timeout=20000)
     inv_url = cm.url.split("?")[0]
-    cm.fill("#inv-currency", "EGP")
+    cm.select_option("#inv-currency", "EGP")
     cm.select_option("#inv-pick", cm.locator("#inv-pick option", has_text="ALN-FULL").first.get_attribute("value"))
     cm.select_option("#inv-pick", cm.locator("#inv-pick option", has_text="RET-SET").first.get_attribute("value"))
     rows = cm.locator("table.inv-lines tbody tr")
@@ -93,7 +93,7 @@ with sync_playwright() as p:
     cm.goto(f"{BASE}/admin/finance/cash")
     cm.locator("summary", has_text="Add a cash box").click()
     cm.fill("#na-name", box_name)
-    cm.fill("#na-cur", "EGP")
+    cm.select_option("#na-cur", "EGP")
     cm.get_by_role("button", name="Add box").click()
     flash(cm, "created")
 

@@ -92,7 +92,7 @@ with sync_playwright() as p:
     cm.goto(case_url)
     cm.get_by_role("button", name="+ New invoice").click()
     cm.wait_for_url(re.compile(r"/invoices/[0-9a-f-]{36}"), timeout=20000)
-    cm.fill("#inv-currency", "USD")
+    cm.select_option("#inv-currency", "USD")
     cm.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Description (English)']").fill("Snap-On smile — upper arch")
     cm.locator("table.inv-lines tbody tr").nth(0).locator("input[aria-label='Unit price']").fill("1000")
     cm.get_by_role("button", name="Issue invoice · إصدار الفاتورة").click()

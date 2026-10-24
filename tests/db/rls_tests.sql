@@ -1365,6 +1365,16 @@ select t.ok((select public from storage.buckets where id = 'media'), 'media buck
 select t.ok((select not public from storage.buckets where id = 'case-files'), 'clinical case-files bucket exists and is PRIVATE');
 select t.ok((select count(*) = 2 from storage.buckets), 'no other buckets are created');
 
+-- Currency drop-downs: codes readable by any signed-in user, not by anonymous visitors
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) > 1 and bool_or(c = 'USD') from public.currency_codes() c), 'any signed-in user (agent) gets the list of currency codes');
+reset role;
+set role anon;
+do $$ begin perform public.currency_codes(); perform t.ok(false, 'anon currency codes');
+exception when insufficient_privilege then perform t.ok(true, 'anonymous visitors cannot read the currency codes'); end $$;
+reset role;
+
 -- Every table in public has RLS enabled
 select t.ok((select bool_and(c.relrowsecurity) from pg_class c join pg_namespace n on n.oid = c.relnamespace
              where n.nspname = 'public' and c.relkind = 'r'), 'Row Level Security is enabled on every public table');

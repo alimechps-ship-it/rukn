@@ -10,6 +10,7 @@ import { can, requireStaff } from "@/lib/auth";
 import { allLanguages, createSessionClient, fmtDate, hasPendingChanges, pickerMedia, SERVICE_TR_FIELDS } from "@/lib/admin";
 import { discardDraft } from "../../_actions/content";
 import { saveService, setServiceStatus } from "../../_actions/services";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export const metadata = { title: "Edit service" };
 
@@ -64,7 +65,7 @@ export default async function EditService({ params }: { params: Promise<{ id: st
               <Check name="show_price" label="Display a price on the website" defaultChecked={s.show_price} hint="Prices are never shown unless this is ticked and both fields are set." />
               <div />
               <Text name="price_amount" label="Starting price" type="number" defaultValue={s.price_amount} />
-              <Text name="price_currency" label="Currency (ISO code)" defaultValue={s.price_currency} maxLength={3} placeholder="USD" />
+              <CurrencyField id="price_currency" name="price_currency" defaultValue={s.price_currency || "USD"} />
             </div>
           </section>
         ) : null}

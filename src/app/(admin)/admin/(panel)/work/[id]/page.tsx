@@ -9,6 +9,7 @@ import { profileMap } from "@/lib/case-data";
 import { ARCHES, FILE_CATEGORIES, fmtDay, fmtMoney, SEXES } from "@/lib/cases";
 import { WO_STATUS, WORK_KINDS, type WorkOrder } from "@/lib/partners";
 import { addWorkMessage, partnerWorkAction, sendFileToAgent, setWorkOrderCost, setWorkOrderStatus, updateWorkOrder } from "../../_actions/partners";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export const metadata = { title: "Work order" };
 const kb = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -175,7 +176,7 @@ export default async function WorkOrderPage({ params }: { params: Promise<{ id: 
               <h2>Agreed cost · التكلفة المتفق عليها</h2>
               <ActionForm action={setWorkOrderCost.bind(null, id)} className="form-grid">
                 <div className="field"><label htmlFor="wc-amt">Cost</label><input id="wc-amt" type="number" name="cost_amount" min="0" step="0.01" defaultValue={cost?.cost_amount ?? ""} /></div>
-                <div className="field"><label htmlFor="wc-cur">Currency</label><input id="wc-cur" type="text" name="currency" maxLength={3} defaultValue={cost?.currency ?? "USD"} /></div>
+                <CurrencyField id="wc-cur" name="currency" defaultValue={cost?.currency ?? "USD"} />
                 <div className="full"><SubmitButton className="btn secondary small">Save cost</SubmitButton></div>
               </ActionForm>
             </section>

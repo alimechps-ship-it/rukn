@@ -5,6 +5,7 @@ import { fmtDay, fmtMoney } from "@/lib/cases";
 import { BILL_STATUS, PARTNER_KINDS, WO_STATUS, WORK_KINDS, type CostMap, type Partner, type WorkOrder } from "@/lib/partners";
 import { ItemsEditor } from "@/components/admin/ItemsEditor";
 import { createPartnerBill, deletePartnerBill, reviewPartnerBill, savePartner, voidPartnerBill } from "../_actions/partners";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export function PartnerFields({ p }: { p?: Partner }) {
   const k = p?.id ?? "new";
@@ -24,7 +25,7 @@ export function PartnerFields({ p }: { p?: Partner }) {
       {T("email", "E-mail", 200)}
       {T("country", "Country", 80)}
       {T("city", "City", 80)}
-      {T("currency", "Currency of their prices", 3)}
+      <CurrencyField id={`currency-${k}`} name="currency" label="Currency of their prices · عملة أسعارهم" defaultValue={p?.currency ?? "USD"} />
       {T("tax_number", "Tax / registration no.", 60)}
       <div className="field full"><label htmlFor={`address-${k}`}>Address</label><input id={`address-${k}`} type="text" name="address" maxLength={300} defaultValue={p?.address ?? ""} /></div>
       <div className="field full"><label htmlFor={`bank-${k}`}>Bank / payment details · بيانات الدفع لهم</label><textarea id={`bank-${k}`} name="bank_details" rows={3} maxLength={1000} defaultValue={p?.bank_details ?? ""} dir="auto" /></div>

@@ -9,6 +9,7 @@ import { loadReceivables } from "@/lib/finance";
 import { isAiConfigured } from "@/lib/ai";
 import { PaymentNoticeForm } from "@/components/admin/PaymentNoticeForm";
 import { NoticesTable, type Notice } from "../finance/Notices";
+import { loadCurrencies } from "@/lib/currency-list";
 
 export const metadata = { title: "Account statement" };
 
@@ -77,7 +78,7 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
                 {owes.length ? <>You owe RUKN <strong style={{ color: "#b42318" }}>{owes.map(([c, v]) => fmtMoney(v, c)).join(" · ")}</strong>. </> : <>You have no open balance — you can still send an <strong>advance payment</strong>. </>}
                 Choose an invoice, or leave it empty for a payment on account / advance. Attach the transfer receipt; the finance team confirms it and issues the official receipt.
               </p>
-              <PaymentNoticeForm agentId={agent} invoices={openInvoices} defaultCurrency={owes[0]?.[0] ?? openInvoices[0]?.currency ?? "USD"} />
+              <PaymentNoticeForm agentId={agent} invoices={openInvoices} defaultCurrency={owes[0]?.[0] ?? openInvoices[0]?.currency ?? "USD"} currencies={await loadCurrencies()} />
             </section>
           ) : null}
 

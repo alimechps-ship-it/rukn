@@ -99,7 +99,7 @@ with sync_playwright() as p:
     fin.goto(case_url)
     fin.locator("summary", has_text="Set quotation").click()
     fin.fill("input[name=quote_amount]", "450")
-    fin.fill("input[name=quote_currency]", "USD")
+    fin.select_option("select[name=quote_currency]", "USD")
     submit(fin, "form:has(input[name=quote_amount])", "Save quotation", "Quotation saved")
     cm.set_input_files("#cf-file", E["SCAN_FILE"])
     cm.wait_for_selector(".timeline li:has-text('Uploaded')", timeout=60000)

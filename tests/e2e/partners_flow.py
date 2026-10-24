@@ -71,7 +71,7 @@ with sync_playwright() as p:
         ow.select_option("#kind-new", kind)
         ow.fill("#name-new", name)
         ow.fill("#contact_name-new", "Dr. Test" if kind == "planner" else "Eng. Test")
-        ow.fill("#currency-new", "USD")
+        ow.select_option("#currency-new", "USD")
         ow.get_by_role("button", name="Add partner").click()
         ow.wait_for_url(re.compile(r"/admin/partners/[0-9a-f-]{36}"), timeout=20000)
     check("Super admin adds a planner and a lab", lab_name in ow.inner_text("h1"))
@@ -127,7 +127,7 @@ with sync_playwright() as p:
         fin.locator("a", has_text=wo).first.click()
         fin.wait_for_url(re.compile(r"/admin/work/[0-9a-f-]{36}"))
         fin.fill("#wc-amt", amount)
-        fin.fill("#wc-cur", "USD")
+        fin.select_option("#wc-cur", "USD")
         fin.get_by_role("button", name="Save cost").click()
         ok(fin, "Cost saved")
 

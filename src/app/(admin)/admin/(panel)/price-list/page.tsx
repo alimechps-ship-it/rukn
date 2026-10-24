@@ -4,6 +4,7 @@ import { createSessionClient } from "@/lib/admin";
 import { fmtMoney } from "@/lib/cases";
 import { PRICE_CATEGORIES, type PriceItem } from "@/lib/invoices";
 import { saveBillingSettings, savePriceItem } from "../_actions/invoices";
+import { CurrencyField } from "@/components/admin/CurrencyField";
 
 export const metadata = { title: "Price list & billing" };
 
@@ -22,7 +23,7 @@ function ItemFields({ p }: { p?: PriceItem }) {
       <div className="field"><label htmlFor={`ue-${k}`}>Unit</label><input id={`ue-${k}`} type="text" name="unit_en" defaultValue={p?.unit_en ?? "piece"} maxLength={40} placeholder="arch, aligner, set, case…" /></div>
       <div className="field"><label htmlFor={`ua-${k}`}>الوحدة</label><input id={`ua-${k}`} type="text" name="unit_ar" defaultValue={p?.unit_ar ?? ""} maxLength={40} dir="rtl" placeholder="فك، أليانر، طقم…" /></div>
       <div className="field"><label htmlFor={`pr-${k}`}>Unit price *</label><input id={`pr-${k}`} type="number" name="unit_price" min="0" step="0.01" defaultValue={p ? Number(p.unit_price) : ""} required /></div>
-      <div className="field"><label htmlFor={`cu-${k}`}>Currency</label><input id={`cu-${k}`} type="text" name="currency" defaultValue={p?.currency ?? "USD"} maxLength={3} /></div>
+      <CurrencyField id={`cu-${k}`} name="currency" defaultValue={p?.currency ?? "USD"} />
       <div className="field"><label htmlFor={`so-${k}`}>Order</label><input id={`so-${k}`} type="number" name="sort_order" defaultValue={p?.sort_order ?? 0} /></div>
       <div className="field"><label>&nbsp;</label><label className="check"><input type="checkbox" name="active" defaultChecked={p ? p.active : true} /> Active (shown when invoicing)</label></div>
     </>
@@ -83,7 +84,7 @@ export default async function PriceList() {
       <section className="panel">
         <h2>Billing details printed on invoices · بيانات الفوترة</h2>
         <ActionForm action={saveBillingSettings} className="form-grid">
-          <div className="field"><label htmlFor="b-cur">Default currency</label><input id="b-cur" type="text" name="default_currency" defaultValue={billing?.default_currency ?? "USD"} maxLength={3} /></div>
+          <CurrencyField id="b-cur" name="default_currency" label="Default currency · العملة الافتراضية" defaultValue={billing?.default_currency ?? "USD"} />
           <div className="field"><label htmlFor="b-due">Payment due after (days)</label><input id="b-due" type="number" name="due_days" min="0" max="365" defaultValue={billing?.due_days ?? 14} /></div>
           <div className="field"><label htmlFor="b-tl">Tax name</label><input id="b-tl" type="text" name="tax_label" defaultValue={billing?.tax_label ?? "VAT"} maxLength={30} /></div>
           <div className="field"><label htmlFor="b-tr">Default tax rate %</label><input id="b-tr" type="number" name="tax_rate" min="0" max="100" step="0.01" defaultValue={billing ? Number(billing.tax_rate) : 0} /></div>

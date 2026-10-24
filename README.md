@@ -175,6 +175,20 @@ Never prefix a secret with `NEXT_PUBLIC_` and never commit `.env.local`.
 
 Any Node.js host that runs `npm run build && npm start` works too (Netlify, Render, a VPS). Images and data live in Supabase, so the web server is stateless.
 
+**Speed:** put the app next to the database. Vercel → Settings → Functions → *Function Region* = the Supabase region (e.g. Frankfurt `fra1` for Supabase `eu-central-1`). Every page makes several database calls, so a US region with a Frankfurt database adds ~100 ms per call.
+
+### 5b. Own server (VPS) with Coolify — browser only
+
+The repository ships a `Dockerfile` (Next.js *standalone* build, health check at `/api/health`) and, for a VPS without Coolify, `deploy/docker-compose.yml` + `deploy/Caddyfile` (automatic HTTPS).
+
+1. Create a server (e.g. Hetzner Cloud CX23 · 2 vCPU · 4 GB, location Nuremberg/Falkenstein, image Ubuntu 24.04).
+2. Open the server's web console and run the Coolify installer: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash`, then open `http://SERVER-IP:8000` and create the admin account.
+3. Coolify → *Projects* → *New resource* → *Private repository (GitHub App)* → `rukn`, branch `main`, **Build pack: Dockerfile**, port `3000`.
+4. *Environment variables*: everything from §4; tick **Build variable** for the `NEXT_PUBLIC_…` ones.
+5. *Domains*: `https://www.yourdomain.com,https://yourdomain.com`; at the registrar add `A` records `@` and `www` → the server IP. Coolify issues HTTPS.
+6. Deploy. Every push to `main` redeploys automatically (enable *Auto deploy*).
+7. Update Supabase → Authentication → URL Configuration and `NEXT_PUBLIC_SITE_URL` to the new domain.
+
 ## 6. Connecting a domain (when purchased)
 
 1. Buy the domain (e.g. at Namecheap, Cloudflare, GoDaddy, or an `.eg` registrar).
@@ -208,9 +222,9 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (309 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (310 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
-- **Advance settlement** (6 checks: new agent pays an advance, later invoices are settled oldest first, receivables, statement): see `tests/e2e/advance_settlement_flow.py`.
+- **Advance settlement** (9 checks: new agent pays an advance, later invoices are settled oldest first, receivables, statement, agent money never shown as custody): see `tests/e2e/advance_settlement_flow.py`.
 - **Payments on account / advances** (12 checks: balance banner, My account form, advance without a case, invoice notice from the account page, finance confirmation into a box, statement, receipt print): see `tests/e2e/account_payments_flow.py`.
 - **Journal entries & chart of accounts** (28 checks: templates, discount on an invoice, discount earned, offset across currencies with edited rate, ledger account statement, agent statement & print, void): see `tests/e2e/journal_flow.py`.
 - **Cash vouchers with labs, clinics & agents** (11 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.

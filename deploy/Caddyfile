@@ -1,0 +1,5 @@
+# Replace with your domain(s). Caddy issues and renews the HTTPS certificate automatically.
+rukn.example.com, www.rukn.example.com {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

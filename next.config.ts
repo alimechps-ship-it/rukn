@@ -21,6 +21,8 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Own server (Docker / Coolify): a small self-contained build. Vercel ignores this.
+  ...(process.env.STANDALONE === "1" ? { output: "standalone" as const } : {}),
   // Ship the supplied brand images with the admin server functions (Settings → Import starter images).
   outputFileTracingIncludes: { "/admin/settings": ["./seed-assets/**/*"], "/admin/**": ["./seed-assets/**/*"] },
   reactStrictMode: true,

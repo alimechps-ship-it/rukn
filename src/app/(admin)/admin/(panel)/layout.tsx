@@ -30,99 +30,100 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     newInquiries = count ?? 0;
   }
 
-  const groups: NavGroup[] = can.backOffice(user) ? [{ label: "Overview", items: [{ href: "/admin", label: "Dashboard" }] }] : [];
+  const db = await createSessionClient();
+  const head = { count: "exact" as const, head: true };
+  const [openCases, openOrders, waiting, billsToReview, pendingNotices, toPrice] = await Promise.all([
+    can.cases(user) ? db.from("cases").select("id", head).not("status", "in", "(delivered,cancelled)").then((r) => r.count ?? 0) : 0,
+    can.partner(user) ? db.from("case_assignments").select("id", head).in("status", ["assigned", "accepted", "in_progress"]).then((r) => r.count ?? 0) : 0,
+    can.caseStaff(user) ? db.from("case_assignments").select("id", head).in("status", ["completed", "shipped"]).then((r) => r.count ?? 0) : 0,
+    can.finance(user) ? db.from("partner_bills").select("id", head).eq("status", "submitted").then((r) => r.count ?? 0) : 0,
+    can.finance(user) ? db.from("case_payment_claims").select("id", head).eq("status", "pending").then((r) => r.count ?? 0) : 0,
+    can.finance(user) ? db.from("case_dispatch_orders").select("id", head).eq("status", "sent").then((r) => r.count ?? 0) : 0,
+  ]);
+
+  const groups: NavGroup[] = [];
+  if (can.backOffice(user)) groups.push({ key: "overview", label: "Overview", ar: "نظرة عامة", items: [{ href: "/admin", label: "Dashboard", ar: "لوحة المعلومات" }] });
   if (can.cases(user)) {
-    const db = await createSessionClient();
-    const { count: openCases } = await db.from("cases").select("id", { count: "exact", head: true }).not("status", "in", "(delivered,cancelled)");
+    const staff = can.caseStaff(user);
     groups.push({
-      label: can.caseStaff(user) ? "Cases" : "Agent portal",
+      key: "cases", label: staff ? "Cases" : "Agent portal", ar: staff ? "الحالات" : "بوابة المندوب",
       items: [
-        { href: "/admin/cases", label: can.caseStaff(user) ? "All cases" : "My cases", badge: openCases ?? 0 },
-        { href: "/admin/cases/new", label: "New case" },
-        { href: "/admin/reports", label: "Reports" },
-        ...(can.caseStaff(user) ? [] : [{ href: "/admin/statement", label: "My account · كشف حسابي" }]),
+        { href: "/admin/cases", label: staff ? "All cases" : "My cases", ar: staff ? "كل الحالات" : "حالاتي", badge: openCases },
+        { href: "/admin/cases/new", label: "New case", ar: "حالة جديدة" },
+        { href: "/admin/reports", label: "Reports", ar: "التقارير" },
+        ...(staff ? [] : [{ href: "/admin/statement", label: "My account", ar: "كشف حسابي" }]),
       ],
     });
   }
   if (can.partner(user)) {
-    const db = await createSessionClient();
-    const { count: openOrders } = await db.from("case_assignments").select("id", { count: "exact", head: true }).in("status", ["assigned", "accepted", "in_progress"]);
     groups.push({
-      label: "Partner portal · بوابة الشركاء",
+      key: "partner", label: "Partner portal", ar: "بوابة الشركاء",
       items: [
-        { href: "/admin/work", label: "Work orders · أوامر العمل", badge: openOrders ?? 0 },
-        { href: "/admin/partner-bills", label: "My bills · فواتيري" },
-        { href: "/admin/partner-statement", label: "My statement · كشف حسابي" },
+        { href: "/admin/work", label: "Work orders", ar: "أوامر العمل", badge: openOrders },
+        { href: "/admin/partner-bills", label: "My bills", ar: "فواتيري" },
+        { href: "/admin/partner-statement", label: "My statement", ar: "كشف حسابي" },
       ],
     });
   }
   if (can.caseStaff(user)) {
-    const db = await createSessionClient();
-    const [{ count: waiting }, { count: billsToReview }] = await Promise.all([
-      db.from("case_assignments").select("id", { count: "exact", head: true }).in("status", ["completed", "shipped"]),
-      can.finance(user) ? db.from("partner_bills").select("id", { count: "exact", head: true }).eq("status", "submitted") : Promise.resolve({ count: 0 }),
-    ]);
     groups.push({
-      label: "Partners · المخططون والمعامل",
+      key: "partners", label: "Planners & labs", ar: "المخططون والمعامل",
       items: [
-        { href: "/admin/partners", label: "Planners & labs · الشركاء" },
-        { href: "/admin/work", label: "Work orders · أوامر العمل", badge: waiting ?? 0 },
-        ...(can.finance(user) ? [{ href: "/admin/partner-bills", label: "Partner bills · فواتير الشركاء", badge: billsToReview ?? 0 }] : []),
+        { href: "/admin/partners", label: "Partners", ar: "الشركاء" },
+        { href: "/admin/work", label: "Work orders", ar: "أوامر العمل", badge: waiting },
+        ...(can.finance(user) ? [{ href: "/admin/partner-bills", label: "Partner bills", ar: "فواتير الشركاء", badge: billsToReview }] : []),
       ],
     });
-  }
-  if (can.caseStaff(user) && !can.finance(user)) {
-    groups.push({ label: "Tools", items: [{ href: "/admin/assistant", label: "AI assistant · المساعد الذكي" }] });
   }
   if (can.finance(user)) {
-    const db = await createSessionClient();
-    const [{ count: pendingNotices }, { count: toPrice }] = await Promise.all([
-      db.from("case_payment_claims").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      db.from("case_dispatch_orders").select("id", { count: "exact", head: true }).eq("status", "sent"),
-    ]);
     groups.push({
-      label: "Finance · المالية",
+      key: "finance", label: "Finance", ar: "المالية",
       items: [
-        { href: "/admin/finance/to-price", label: "To price · بانتظار التسعير", badge: toPrice ?? 0 },
-        { href: "/admin/assistant", label: "AI assistant · المساعد الذكي" },
-        { href: "/admin/finance/notices", label: "Payment notices · إشعارات الدفع", badge: pendingNotices ?? 0 },
-        { href: "/admin/statement", label: "Agent statements · كشوف المناديب" },
-        { href: "/admin/finance/receivables", label: "Receivables · المستحقات" },
-        { href: "/admin/finance/journal", label: "Journal entries · القيود" },
-        { href: "/admin/finance/accounts", label: "Chart of accounts · شجرة الحسابات" },
-        { href: "/admin/finance/cash", label: "Cash boxes · الصناديق" },
-        { href: "/admin/finance/rates", label: "Exchange rates · أسعار الصرف" },
-        { href: "/admin/finance/people", label: "Person accounts · العهد" },
-        { href: "/admin/price-list", label: "Price list & billing" },
+        { href: "/admin/finance/to-price", label: "To price", ar: "بانتظار التسعير", badge: toPrice },
+        { href: "/admin/finance/notices", label: "Payment notices", ar: "إشعارات الدفع", badge: pendingNotices },
+        { href: "/admin/finance/receivables", label: "Receivables", ar: "المستحقات" },
+        { href: "/admin/statement", label: "Agent statements", ar: "كشوف المناديب" },
+        { href: "/admin/price-list", label: "Price list & billing", ar: "قائمة الأسعار" },
+      ],
+    });
+    groups.push({
+      key: "accounting", label: "Accounting", ar: "الحسابات",
+      items: [
+        { href: "/admin/finance/cash", label: "Cash boxes", ar: "الصناديق" },
+        { href: "/admin/finance/journal", label: "Journal entries", ar: "القيود" },
+        { href: "/admin/finance/accounts", label: "Chart of accounts", ar: "شجرة الحسابات" },
+        { href: "/admin/finance/people", label: "Person accounts", ar: "العهد" },
+        { href: "/admin/finance/rates", label: "Exchange rates", ar: "أسعار الصرف" },
       ],
     });
   }
+  if (can.caseStaff(user)) groups.push({ key: "tools", label: "Tools", ar: "أدوات", items: [{ href: "/admin/assistant", label: "AI assistant", ar: "المساعد الذكي" }] });
   if (can.translate(user)) {
     groups.push({
-      label: "Website content",
+      key: "content", label: "Website content", ar: "محتوى الموقع",
       items: [
-        { href: "/admin/pages", label: "Pages & sections" },
-        { href: "/admin/services", label: "Services" },
-        { href: "/admin/faqs", label: "FAQs" },
-        { href: "/admin/team", label: "Team profiles" },
-        { href: "/admin/navigation", label: "Navigation & footer" },
-        { href: "/admin/announcements", label: "Announcements" },
-        { href: "/admin/strings", label: "Interface text" },
-        ...(can.content(user) ? [{ href: "/admin/media", label: "Media library" }, { href: "/admin/trash", label: "Trash" }] : []),
+        { href: "/admin/pages", label: "Pages & sections", ar: "الصفحات" },
+        { href: "/admin/services", label: "Services", ar: "الخدمات" },
+        { href: "/admin/faqs", label: "FAQs", ar: "الأسئلة الشائعة" },
+        { href: "/admin/team", label: "Team profiles", ar: "الفريق" },
+        { href: "/admin/navigation", label: "Navigation & footer", ar: "القوائم والتذييل" },
+        { href: "/admin/announcements", label: "Announcements", ar: "الإعلانات" },
+        { href: "/admin/strings", label: "Interface text", ar: "نصوص الواجهة" },
+        ...(can.content(user) ? [{ href: "/admin/media", label: "Media library", ar: "مكتبة الوسائط" }, { href: "/admin/trash", label: "Trash", ar: "المحذوفات" }] : []),
       ],
     });
   }
-  if (can.inquiries(user)) groups.push({ label: "Leads", items: [{ href: "/admin/inquiries", label: "Inquiries", badge: newInquiries }] });
+  if (can.inquiries(user)) groups.push({ key: "leads", label: "Leads", ar: "العملاء المحتملون", items: [{ href: "/admin/inquiries", label: "Inquiries", ar: "الطلبات", badge: newInquiries }] });
   const system = [
-    ...(can.translate(user) ? [{ href: "/admin/settings", label: "Settings" }] : []),
-    ...(can.admin(user) ? [{ href: "/admin/users", label: "Users & roles" }] : []),
-    ...(can.backOffice(user) ? [{ href: "/admin/activity", label: "Activity log" }] : []),
+    ...(can.translate(user) ? [{ href: "/admin/settings", label: "Settings", ar: "الإعدادات" }] : []),
+    ...(can.admin(user) ? [{ href: "/admin/users", label: "Users & roles", ar: "المستخدمون والصلاحيات" }] : []),
+    ...(can.backOffice(user) ? [{ href: "/admin/activity", label: "Activity log", ar: "سجل النشاط" }] : []),
   ];
-  if (system.length) groups.push({ label: "System", items: system });
+  if (system.length) groups.push({ key: "system", label: "System", ar: "النظام", items: system });
 
   return (
     <div className="shell">
-      <Sidebar groups={groups} user={{ email: user.email, roles: user.roles.map((r) => ROLE_LABELS[r]).join(", ") }} signOut={signOut} />
+      <Sidebar groups={groups} user={{ email: user.email, name: user.fullName ?? "", roles: user.roles.map((r) => ROLE_LABELS[r]).join(" · ") }} signOut={signOut} />
       <main className="main">{children}</main>
     </div>
   );

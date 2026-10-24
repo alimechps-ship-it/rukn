@@ -106,7 +106,7 @@ with sync_playwright() as p:
     # ---- case manager: planning order ----
     cm = b.new_context(viewport={"width": 1366, "height": 900}).new_page()
     login(cm, E["CASEMGR_EMAIL"], E["CASEMGR_PASSWORD"])
-    check("Partners section in the case-manager menu", "Planners & labs" in cm.inner_text("aside"))
+    check("Partners section in the case-manager menu", "planners & labs" in cm.inner_text("aside").lower())
     cm.goto(case_url)
     before = wo_list(cm)
     form = cm.locator("form:has(#wo-partner)")

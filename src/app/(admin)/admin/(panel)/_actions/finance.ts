@@ -31,6 +31,25 @@ function party(fd: FormData) {
   if (UUID.test(ag)) return { partner_id: null, agent_id: ag, party_user: null, party_name: null };
   return { partner_id: null, agent_id: null, party_user: UUID.test(u) ? u : null, party_name: UUID.test(u) ? null : str(fd, "party_name", 120) };
 }
+/** An agent is never a "person" (custody): a picked user or a typed name that is an agent goes to his account. */
+async function agentParty(db: Awaited<ReturnType<typeof createSessionClient>>, p: ReturnType<typeof party>) {
+  if (p.partner_id || p.agent_id) return p;
+  let agent: string | null = null;
+  if (p.party_user) {
+    const { data } = await db.from("user_roles").select("user_id").eq("user_id", p.party_user).eq("role", "agent").limit(1);
+    if (data?.length) agent = p.party_user;
+  } else if (p.party_name) {
+    const { data: roles } = await db.from("user_roles").select("user_id").eq("role", "agent").limit(5000);
+    const ids = (roles ?? []).map((r) => r.user_id as string);
+    if (ids.length) {
+      const { data: profs } = await db.from("profiles").select("id,full_name").in("id", ids).limit(5000);
+      const n = p.party_name.trim().toLowerCase();
+      const hits = (profs ?? []).filter((x) => (x.full_name ?? "").trim().toLowerCase() === n);
+      if (hits.length === 1) agent = hits[0].id as string;
+    }
+  }
+  return agent ? { partner_id: null, agent_id: agent, party_user: null, party_name: null } : p;
+}
 const METHOD_BY_BOX: Record<string, string> = { cash: "cash", bank: "bank_transfer", wallet: "online" };
 const refresh = () => { revalidatePath("/admin/finance/cash"); revalidatePath("/admin/finance/people"); };
 
@@ -71,7 +90,7 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
     if (!UUID.test(account)) return { ok: false, message: "Choose the cash box." };
     if (!(amount > 0)) return { ok: false, message: "Enter the amount." };
     if (!(direction === "in" ? IN_CATS : OUT_CATS).includes(category)) return { ok: false, message: "Choose the type." };
-    const p = party(fd);
+    const p = await agentParty(db, party(fd));
     // Paying a lab / clinic → a partner payment (PP-) that makes the voucher and counts in their account.
     if (p.partner_id && direction === "out") {
       const { data: box } = await db.from("cash_accounts").select("currency,kind").eq("id", account).maybeSingle();
@@ -113,11 +132,11 @@ export async function updateCashEntry(id: string, _: ActionResult, fd: FormData)
     if (!cur) return { ok: false, message: "Voucher not found." };
     if (cur.voided) return { ok: false, message: "A voided voucher cannot be changed." };
     const linked = Boolean(cur.case_payment_id || cur.transfer_group || cur.partner_payment_id);
-    const p = party(fd);
+    const p = await agentParty(db, party(fd));
     if (p.partner_id && cur.direction === "out" && !cur.partner_payment_id) {
       return { ok: false, message: "To pay a lab or clinic, void this voucher and record a new payment voucher choosing them — it then counts in their account." };
     }
-    const patch: Record<string, unknown> = { description: str(fd, "description", 500), reference: str(fd, "reference", 120), ...(cur.partner_payment_id ? {} : p) };
+    const patch: Record<string, unknown> = { description: str(fd, "description", 500), reference: str(fd, "reference", 120), ...(cur.partner_payment_id || cur.case_payment_id ? {} : p) };
     if (!linked) {
       const amount = amountOf(fd.get("amount"));
       let category = String(fd.get("category") ?? cur.category);

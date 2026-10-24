@@ -69,7 +69,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - Issued invoices can be edited; the number is kept and each save is a numbered revision logged on the case timeline and in the audit log. Voided invoices stay locked.
   - **Receivables**: unpaid issued invoices with ageing (not due / 1–30 / 31–60 / 61–90 / 90+), by agent, cases without an invoice; print + CSV.
   - **Cash boxes**: cash / bank / wallet boxes, receipt vouchers `CR-`, payment vouchers `CP-`, transfers `TR-` (with exchange), statements with running balance; a box can never pay out more than its balance. A case payment can be deposited into a box in one step. Vouchers print with the amount in words (English + Arabic).
-  - **Person accounts**: what each person took (custody, withdrawals, salaries…) and returned, with printable statements.
+  - **Person accounts**: what each person took (custody, withdrawals, salaries…) and returned, with printable statements. Agents are never custody: their receipts, vouchers to / from them (also when their name is typed) go to their own account (migration `20261024002000_agent_not_custody.sql`).
 - **Agent confirmations & payments** (migration `20261022000900_agent_receipts_payments.sql`):
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
   - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The finance manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.

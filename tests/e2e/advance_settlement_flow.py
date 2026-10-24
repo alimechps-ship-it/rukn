@@ -105,6 +105,23 @@ with sync_playwright() as p:
     check("Agent's balance due is 600 − 300 = 300", "$300.00" in ag.inner_text(".stats"), ag.inner_text(".stats"))
     ag.goto(case_url)
     check("Agent sees the reduced balance on his invoice (200)", "$200.00" in ag.inner_text("main"))
+
+    # ---- agent money is never custody (العهد) ----
+    fin.goto(f"{BASE}/admin/finance/people")
+    check("The agent's confirmed payment is not listed in person accounts (custody)", name not in fin.inner_text("main"))
+    fin.goto(f"{BASE}/admin/finance/cash")
+    v = fin.locator("form:has(input[name=direction][value=out])")
+    v.locator("select[name=account_id]").select_option(v.locator("select[name=account_id] option", has_text="USD").first.get_attribute("value"))
+    v.locator("input[name=amount]").fill("25")
+    v.locator("#new-out-party").fill(name)
+    v.locator("#new-out-party").press("Escape")
+    v.locator("input[name=description]").fill(f"Typed agent name {stamp}")
+    v.get_by_role("button", name=re.compile("Record payment")).click()
+    fin.wait_for_selector("form:has(input[name=direction][value=out]) .flash", timeout=20000)
+    fin.goto(f"{BASE}/admin/finance/people")
+    check("A voucher typed with the agent's name is not custody either", name not in fin.inner_text("main"))
+    ag.goto(f"{BASE}/admin/statement")
+    check("…it goes to the agent's statement instead", f"Typed agent name {stamp}" in ag.inner_text("main") or "$25.00" in ag.inner_text("main"), ag.inner_text("main")[-500:])
     b.close()
 
 failed = [n for n, ok_ in results if not ok_]

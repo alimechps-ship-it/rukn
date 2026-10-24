@@ -204,9 +204,10 @@ export async function loadStatement(db: Db, accountId: string, from?: string, to
   return { account: account as CashAccount, opening, entries, running, totalIn: Math.round(totalIn * 100) / 100, totalOut: Math.round(totalOut * 100) / 100, closing: bal, from: f, to: t };
 }
 
-/** Person accounts: what each person took from the boxes and what they returned. */
+/** Person accounts (custody · العهد): what each staff member / person took from the boxes and returned.
+ *  Never agents, labs / clinics, case receipts, transfers or journal entries — those have their own accounts. */
 export async function loadPeople(db: Db, from?: string, to?: string) {
-  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").is("partner_id", null).is("agent_id", null).order("entry_date").order("created_at").limit(10000);
+  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").is("partner_id", null).is("agent_id", null).is("case_payment_id", null).is("transfer_group", null).is("journal_id", null).not("category", "in", "(case_payment,transfer,agent_payment,agent_receipt,partner_refund,journal)").order("entry_date").order("created_at").limit(10000);
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
   const rows = ((data ?? []) as CashEntry[]).filter((e) => (!f || e.entry_date >= f) && (!t || e.entry_date <= t));

@@ -1260,6 +1260,7 @@ do $$ declare v_rc text; v_box uuid; begin
   v_rc := public.accept_payment_claim((select id from public.case_payment_claims where reference = 'ADV-1'), v_box);
   perform t.ok((select case_id is null and agent_id = '00000000-0000-0000-0000-0000000000a1' and amount = 300 from public.case_payments where receipt_no = v_rc), 'finance confirms it: receipt on the agent account without a case');
   perform t.ok((select count(*) = 1 from public.cash_entries e join public.case_payments p on p.id = e.case_payment_id where p.receipt_no = v_rc and e.description like 'Payment on account%'), 'and it is deposited in the cash box');
+  perform t.ok((select e.agent_id = p.agent_id and e.party_user is null from public.cash_entries e join public.case_payments p on p.id = e.case_payment_id where p.receipt_no = v_rc), 'the deposit belongs to the agent account, never to a person (custody)');
 end $$;
 reset role;
 select t.login('00000000-0000-0000-0000-0000000000a1');

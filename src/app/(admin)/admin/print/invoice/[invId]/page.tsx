@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { can, getStaffUser } from "@/lib/auth";
 import { docCredits } from "@/lib/journal";
+import { advanceAllocation } from "@/lib/allocation";
 import { createSessionClient } from "@/lib/admin";
 import { profileMap } from "@/lib/case-data";
 import { countryName, fmtDay, fmtMoney, PAYMENT_METHODS } from "@/lib/cases";
@@ -37,7 +38,9 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
   const paid = (payments ?? []).reduce((a, p) => a + Number(p.amount), 0);
   const discount = Math.min(Number(inv.discount_amount), Number(inv.subtotal));
   const credit = (await docCredits(db, { invoiceIds: [invId] })).get(invId) ?? 0;
-  const balance = Number(inv.total) - paid - credit;
+  const { data: invCase } = await db.from("cases").select("agent_id").eq("id", inv.case_id).maybeSingle();
+  const advance = inv.status === "issued" && invCase ? (await advanceAllocation(db, [invCase.agent_id as string])).get(invId) ?? 0 : 0; // advance / payment on account applied
+  const balance = Number(inv.total) - paid - credit - advance;
   const draft = inv.status === "draft";
 
   return (
@@ -134,6 +137,7 @@ export default async function PrintInvoice({ params }: { params: Promise<{ invId
             <dl className="kv2" style={{ gridTemplateColumns: "1fr auto", marginTop: 6 }}>
               <dt>Paid · المدفوع</dt><dd style={{ textAlign: "end" }}>{fmtMoney(paid, cur)}</dd>
               {credit ? <><dt>Journal entries · قيود</dt><dd style={{ textAlign: "end" }}>{credit > 0 ? "− " : "+ "}{fmtMoney(Math.abs(credit), cur)}</dd></> : null}
+              {advance ? <><dt>Advance applied · من الدفعة المقدمة</dt><dd style={{ textAlign: "end" }}>− {fmtMoney(advance, cur)}</dd></> : null}
               <dt><strong style={{ color: "#10263d" }}>Balance due · المتبقي</strong></dt><dd style={{ textAlign: "end", color: balance > 0 ? "#b42318" : "#067647" }}>{fmtMoney(balance, cur)}</dd>
             </dl>
           ) : null}

@@ -64,7 +64,7 @@ export default async function Receivables({ searchParams }: { searchParams: Prom
                   <td className="small nowrap">{x.due_date ? fmtDay(x.due_date) : "—"}<div className="muted">issued {fmtDay(x.issue_date)}</div></td>
                   <td className="num"><span className={x.days > 60 ? "pill closed" : x.days > 0 ? "pill changes" : "pill published"}>{x.days > 0 ? x.days : "not due"}</span></td>
                   <td className="num nowrap">{fmtMoney(x.total, x.currency)}</td>
-                  <td className="num nowrap">{fmtMoney(x.paid, x.currency)}</td>
+                  <td className="num nowrap">{fmtMoney(x.paid, x.currency)}{x.advance ? <div className="small muted">incl. advance {fmtMoney(x.advance, x.currency)}</div> : null}</td>
                   <td className="num nowrap"><strong>{fmtMoney(x.balance, x.currency)}</strong></td>
                 </tr>
               ))}

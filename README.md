@@ -74,6 +74,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - The agent confirms receipt of the **shipment** (case → Delivered, delivery note issued) or of the **treatment plan**.
   - The agent sends a **payment notice** `PN-` (amount, method, transfer number, photo/PDF of the receipt). The finance manager confirms it (**Finance → Payment notices** or on the case): an official receipt `RC-` is issued, applied to the invoice and deposited into the chosen cash box — or rejects it with a reason the agent sees.
   - **Payments on account / advances** (migration `20261022001600_agent_account_payments.sql`): from *My account* the agent sends a payment notice for **any** of his open invoices or **on account / in advance** (no case); his cases page shows the balance due with a *Send a payment* button. The finance manager confirms it as usual (receipt `RC-` on the agent's account, into a cash box) or rejects it. Proofs without a case are stored privately under `case-files/agent/<agent id>/`.
+  - **Advances settle invoices automatically**: money the agent paid that is not tied to an invoice (payments on account / advances, receipt vouchers, journal credits) minus his non-invoice charges is applied, per currency, to his oldest open invoices first. Receivables, the invoice page / print, the case page and the agent's payment form show the balance after the advance (“Advance applied · من الدفعة المقدمة”); anything left over stays as credit on his account. No database change.
   - **Statements per currency**: agent and partner statements (screen and print) show one table per currency, each with its own opening balance, totals and closing balance.
   - **Account statements**: every agent sees *My account* (invoices, payments, balance, pending notices; printable); case staff see all agents.
 - **AI tools** (optional, migration `20261022001000_ai.sql`, env `ANTHROPIC_API_KEY`):
@@ -209,6 +210,7 @@ The alert contains only the type, service, country and a link to the admin — p
 
 - **Database permissions** (309 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
+- **Advance settlement** (6 checks: new agent pays an advance, later invoices are settled oldest first, receivables, statement): see `tests/e2e/advance_settlement_flow.py`.
 - **Payments on account / advances** (12 checks: balance banner, My account form, advance without a case, invoice notice from the account page, finance confirmation into a box, statement, receipt print): see `tests/e2e/account_payments_flow.py`.
 - **Journal entries & chart of accounts** (28 checks: templates, discount on an invoice, discount earned, offset across currencies with edited rate, ledger account statement, agent statement & print, void): see `tests/e2e/journal_flow.py`.
 - **Cash vouchers with labs, clinics & agents** (11 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.

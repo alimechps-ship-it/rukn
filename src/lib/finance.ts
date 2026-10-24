@@ -2,6 +2,7 @@ import "server-only";
 import type { Db } from "./admin";
 import { withQuote } from "./cases";
 import { docCredits } from "./journal";
+import { advanceAllocation } from "./allocation";
 
 export const CASH_KINDS: Record<string, { en: string; ar: string }> = {
   cash: { en: "Cash box", ar: "صندوق نقدي" },
@@ -67,7 +68,7 @@ export type ReceivableFilters = { agent?: string; country?: string; bucket?: str
 
 export interface ReceivableRow {
   invoice_id: string; invoice_no: string; issue_date: string; due_date: string | null; currency: string; total: number; paid: number; balance: number;
-  days: number; bucket: AgingKey; revision: number;
+  days: number; bucket: AgingKey; revision: number; advance: number;
   case_id: string; code: string; clinic_name: string; doctor_name: string; patient_ref: string; agent_id: string; country_code: string; status: string;
 }
 
@@ -82,6 +83,8 @@ export async function loadReceivables(db: Db, f: ReceivableFilters) {
     invIds.length ? db.from("case_payments").select("invoice_id,amount,voided").in("invoice_id", invIds) : Promise.resolve({ data: [] }),
     docCredits(db, { invoiceIds: invIds }),
   ]);
+  // advances / payments on account settle the agent's oldest invoices first
+  const applied = invIds.length ? await advanceAllocation(db, f.agent ? [f.agent] : undefined) : new Map<string, number>();
   const caseMap = new Map((cases ?? []).map((c) => [c.id as string, c]));
   const paid = new Map<string, number>();
   for (const p of (pays ?? []) as { invoice_id: string; amount: number; voided: boolean }[]) if (!p.voided) addTo(paid, p.invoice_id, Number(p.amount));
@@ -91,13 +94,14 @@ export async function loadReceivables(db: Db, f: ReceivableFilters) {
   for (const i of invs ?? []) {
     const c = caseMap.get(i.case_id as string);
     if (!c) continue;
-    const p = Math.round(((paid.get(i.id as string) ?? 0) + (credits.get(i.id as string) ?? 0)) * 100) / 100; // payments + discounts / offsets on the invoice
+    const adv = applied.get(i.id as string) ?? 0;
+    const p = Math.round(((paid.get(i.id as string) ?? 0) + (credits.get(i.id as string) ?? 0) + adv) * 100) / 100; // payments + discounts / offsets + advances
     const balance = Math.round((Number(i.total) - p) * 100) / 100;
     if (balance <= 0) continue;
     const days = daysOverdue(i.due_date as string | null, i.issue_date as string);
     const row: ReceivableRow = {
       invoice_id: i.id as string, invoice_no: i.invoice_no as string, issue_date: i.issue_date as string, due_date: i.due_date as string | null,
-      currency: i.currency as string, total: Number(i.total), paid: p, balance, days, bucket: agingOf(days), revision: Number(i.revision ?? 0),
+      currency: i.currency as string, total: Number(i.total), paid: p, balance, days, bucket: agingOf(days), revision: Number(i.revision ?? 0), advance: adv,
       case_id: c.id as string, code: c.code as string, clinic_name: c.clinic_name as string, doctor_name: c.doctor_name as string,
       patient_ref: c.patient_ref as string, agent_id: c.agent_id as string, country_code: c.country_code as string, status: c.status as string,
     };

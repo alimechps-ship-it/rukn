@@ -8,6 +8,7 @@ import { ItemsEditor } from "@/components/admin/ItemsEditor";
 import { Select, Text, TextArea } from "@/components/admin/fields";
 import { can, requireStaff } from "@/lib/auth";
 import { docCredits } from "@/lib/journal";
+import { advanceAllocation } from "@/lib/allocation";
 import { createSessionClient, fmtDate } from "@/lib/admin";
 import { peopleWithRole, profileMap, serviceOptions } from "@/lib/case-data";
 import {
@@ -73,6 +74,7 @@ export default async function CaseDetail({ params, searchParams }: { params: Pro
   const intakeItems = (c.intake_items ?? []) as { title: string; text: string }[];
   const issuedInvoices = (invoices ?? []).filter((i) => i.status === "issued");
   const credits = await docCredits(db, { invoiceIds: issuedInvoices.map((i) => i.id as string) }); // discounts / offsets linked to invoices
+  if (showMoney) for (const [k, v] of await advanceAllocation(db, [c.agent_id as string])) credits.set(k, (credits.get(k) ?? 0) + v); // advances applied
   const paidOn = (invId: string) => (payments ?? []).filter((p) => !p.voided && p.invoice_id === invId).reduce((a, p) => a + Number(p.amount), 0) + (credits.get(invId) ?? 0);
   const invNo = new Map((invoices ?? []).map((i) => [i.id, i.invoice_no as string | null]));
   const pendingNotices = (claims ?? []).filter((n) => n.status === "pending");

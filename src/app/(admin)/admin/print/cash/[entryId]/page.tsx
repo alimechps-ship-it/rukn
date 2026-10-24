@@ -19,7 +19,7 @@ export default async function PrintVoucher({ params }: { params: Promise<{ entry
   const { entryId } = await params;
   const user = await getStaffUser();
   if (!user) redirect(`/admin/login?next=/admin/print/cash/${entryId}`);
-  if (!can.finance(user) && !can.partner(user)) redirect("/admin?denied=1"); // a partner reads only his own refund vouchers (RLS)
+  if (!can.finance(user) && !can.partner(user) && !(can.cases(user) && !can.caseStaff(user))) redirect("/admin?denied=1"); // partner / agent: own vouchers only (RLS) // a partner reads only his own refund vouchers (RLS)
   const db = await createSessionClient();
   const { data } = await db.from("cash_entries").select("*").eq("id", entryId).maybeSingle();
   if (!data) notFound();
@@ -39,7 +39,7 @@ export default async function PrintVoucher({ params }: { params: Promise<{ entry
   const cat = ALL_CATEGORIES[e.category];
 
   return (
-    <PrintShell back={can.finance(user) ? "/admin/finance/cash" : "/admin/partner-statement"} company={company} docRef={e.entry_no}>
+    <PrintShell back={can.finance(user) ? "/admin/finance/cash" : can.partner(user) ? "/admin/partner-statement" : "/admin/statement"} company={company} docRef={e.entry_no}>
       {e.voided ? <div className="void">VOID</div> : null}
       <div className="doc-title">
         <h1>{title.en}<span className="ar">{title.ar}</span></h1>

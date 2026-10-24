@@ -66,7 +66,7 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
           <div className="stats">
             <div className="stat"><div className="k">Invoiced · المفوتر</div><div className="v" style={{ fontSize: "1.1rem" }}>{mine ? mapText(mine.invoiced, fmtMoney) : "—"}</div></div>
             <div className="stat"><div className="k">Paid · المدفوع</div><div className="v" style={{ fontSize: "1.1rem", color: "#067647" }}>{mine ? mapText(mine.paid, fmtMoney) : "—"}</div></div>
-            {mine && mine.journal.size ? <div className="stat"><div className="k">Journal entries · قيود (+/−)</div><div className="v" style={{ fontSize: "1.1rem" }}>{mapText(mine.journal, fmtMoney)}</div></div> : null}
+            {mine && mine.journal.size ? <div className="stat"><div className="k">Journal entries & vouchers · قيود وسندات (+/−)</div><div className="v" style={{ fontSize: "1.1rem" }}>{mapText(mine.journal, fmtMoney)}</div></div> : null}
             <div className="stat"><div className="k">Balance due · الرصيد المستحق</div><div className="v" style={{ fontSize: "1.1rem", color: "#b42318" }}>{mine ? mapText(mine.balance, fmtMoney) : "—"}</div></div>
             <div className="stat"><div className="k">Payments awaiting confirmation · قيد التأكيد</div><div className="v" style={{ fontSize: "1.1rem" }}>{mine ? mapText(mine.pending, fmtMoney) : "—"}</div></div>
           </div>
@@ -95,7 +95,7 @@ export default async function StatementPage({ searchParams }: { searchParams: Pr
                   {g.lines.map((l) => (
                     <tr key={`${l.kind}-${l.doc_id}-${l.currency}`}>
                       <td className="small nowrap">{fmtDay(l.date)}</td>
-                      <td className="mono" style={{ maxWidth: 340 }}>{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/payment/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted" style={{ fontFamily: "inherit", whiteSpace: "normal" }}>{l.note}</div> : null}</td>
+                      <td className="mono" style={{ maxWidth: 340 }}>{l.kind === "invoice" ? <Link href={`/admin/cases/${l.case_id}/invoices/${l.doc_id}`}>{l.doc}</Link> : l.kind === "journal" ? <a href={`/admin/print/journal/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : l.kind === "voucher" ? <a href={`/admin/print/cash/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a> : <a href={`/admin/print/payment/${l.doc_id}`} target="_blank" rel="noopener">{l.doc}</a>}{l.note ? <div className="small muted" style={{ fontFamily: "inherit", whiteSpace: "normal" }}>{l.note}</div> : null}</td>
                       <td className="small">{l.case_id ? <><Link className="mono" href={`/admin/cases/${l.case_id}`}>{l.code}</Link><div>{l.clinic}</div></> : "—"}</td>
                       <td className="num nowrap">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
                       <td className="num nowrap" style={{ color: "#067647" }}>{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>

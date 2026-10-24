@@ -6,8 +6,8 @@ import { createSessionClient, errMessage, str } from "@/lib/admin";
 import type { ActionResult } from "@/components/admin/ActionForm";
 import { refreshAutoRates } from "@/lib/fx";
 
-const IN_CATS = ["owner_deposit", "advance_return", "other_income", "partner_refund"];
-const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "planning", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other"];
+const IN_CATS = ["owner_deposit", "advance_return", "other_income", "partner_refund", "agent_receipt"];
+const OUT_CATS = ["withdrawal", "advance", "salary", "lab", "planning", "supplies", "shipping", "rent", "utilities", "marketing", "fees", "other", "agent_payment"];
 const KINDS = ["cash", "bank", "wallet"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -26,8 +26,10 @@ const dateOf = (fd: FormData, k: string) => {
 function party(fd: FormData) {
   const u = String(fd.get("party_user") ?? "");
   const pt = String(fd.get("partner_id") ?? "");
-  if (UUID.test(pt)) return { partner_id: pt, party_user: null, party_name: null };
-  return { partner_id: null, party_user: UUID.test(u) ? u : null, party_name: UUID.test(u) ? null : str(fd, "party_name", 120) };
+  const ag = String(fd.get("agent_id") ?? "");
+  if (UUID.test(pt)) return { partner_id: pt, agent_id: null, party_user: null, party_name: null };
+  if (UUID.test(ag)) return { partner_id: null, agent_id: ag, party_user: null, party_name: null };
+  return { partner_id: null, agent_id: null, party_user: UUID.test(u) ? u : null, party_name: UUID.test(u) ? null : str(fd, "party_name", 120) };
 }
 const METHOD_BY_BOX: Record<string, string> = { cash: "cash", bank: "bank_transfer", wallet: "online" };
 const refresh = () => { revalidatePath("/admin/finance/cash"); revalidatePath("/admin/finance/people"); };
@@ -84,6 +86,8 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
       refresh(); revalidatePath("/admin/partners"); revalidatePath("/admin/partner-statement");
       return { ok: true, message: `Payment voucher ${v?.entry_no ?? ""} recorded — payment ${pp.payment_no} to the lab / clinic (in its statement).` };
     }
+    if (p.agent_id) category = direction === "in" ? "agent_receipt" : "agent_payment"; // counts in the agent's account
+    else if (category === "agent_receipt" || category === "agent_payment") return { ok: false, message: "Choose the agent." };
     if (p.partner_id && direction === "in") category = "partner_refund";
     else if (category === "partner_refund") return { ok: false, message: "Choose the lab or clinic the money came from." };
     if ((category === "advance" || category === "withdrawal" || category === "advance_return") && !p.party_user && !p.party_name) {
@@ -94,6 +98,7 @@ export async function addCashEntry(_: ActionResult, fd: FormData): Promise<Actio
       description: str(fd, "description", 500), reference: str(fd, "reference", 120),
     }).select("id,entry_no").single();
     if (p.partner_id) { revalidatePath("/admin/partners"); revalidatePath("/admin/partner-statement"); }
+    if (p.agent_id) revalidatePath("/admin/statement");
     if (error) return { ok: false, message: errMessage(error) };
     refresh();
     return { ok: true, message: `${direction === "in" ? "Receipt" : "Payment"} voucher ${data.entry_no} recorded. Print it from the list below.` };
@@ -116,6 +121,9 @@ export async function updateCashEntry(id: string, _: ActionResult, fd: FormData)
     if (!linked) {
       const amount = amountOf(fd.get("amount"));
       let category = String(fd.get("category") ?? cur.category);
+      if (p.agent_id) category = cur.direction === "in" ? "agent_receipt" : "agent_payment";
+      else if (category === "agent_receipt") category = "other_income";
+      else if (category === "agent_payment") category = "other";
       if (p.partner_id) category = "partner_refund";
       else if (category === "partner_refund") category = "other_income";
       if (!(amount > 0)) return { ok: false, message: "Enter the amount." };
@@ -124,7 +132,7 @@ export async function updateCashEntry(id: string, _: ActionResult, fd: FormData)
     }
     const { error } = await db.from("cash_entries").update(patch).eq("id", id);
     if (error) return { ok: false, message: errMessage(error) };
-    refresh();
+    refresh(); revalidatePath("/admin/statement");
     return { ok: true, message: linked ? "Voucher details saved (amount and date follow the linked payment / transfer)." : "Voucher updated." };
   } catch (e) { return fail(e); }
 }

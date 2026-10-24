@@ -1,15 +1,15 @@
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
 import { ALL_CATEGORIES, IN_CATEGORIES, OUT_CATEGORIES, type CashAccount, type CashEntry } from "@/lib/finance";
 import { addCashEntry, updateCashEntry, voidCashEntry } from "../_actions/finance";
-import { PartyPicker, type PickerBill, type PickerPartner } from "@/components/admin/PartyPicker";
+import { PartyPicker, type PickerAgent, type PickerBill, type PickerPartner } from "@/components/admin/PartyPicker";
 
 export type Person = { id: string; name: string };
 const today = () => new Date().toISOString().slice(0, 10);
 
-export type Parties = { partners: PickerPartner[]; bills: PickerBill[] };
+export type Parties = { partners: PickerPartner[]; bills: PickerBill[]; agents?: PickerAgent[] };
 
-export function PartyFields({ people, parties, entry, idp, direction }: { people: Person[]; parties: Parties; entry?: Pick<CashEntry, "party_user" | "party_name" | "partner_id">; idp: string; direction: "in" | "out" }) {
-  return <PartyPicker idp={idp} direction={direction} partners={parties.partners} people={people} bills={parties.bills} initial={entry} />;
+export function PartyFields({ people, parties, entry, idp, direction }: { people: Person[]; parties: Parties; entry?: Pick<CashEntry, "party_user" | "party_name" | "partner_id" | "agent_id">; idp: string; direction: "in" | "out" }) {
+  return <PartyPicker idp={idp} direction={direction} partners={parties.partners} people={people} agents={parties.agents ?? []} bills={parties.bills} initial={entry} />;
 }
 
 export function NewEntryForm({ direction, accounts, people, parties, defaultAccount }: { direction: "in" | "out"; accounts: (CashAccount & { balance: number })[]; people: Person[]; parties: Parties; defaultAccount?: string }) {
@@ -87,7 +87,7 @@ export function EntriesTable({ entries, accounts, people, parties, names, runnin
                 <td className="mono nowrap">{e.entry_no}{e.voided ? <div><span className="pill closed">void</span></div> : null}</td>
                 <td className="nowrap small">{new Date(e.entry_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</td>
                 <td className="small">{accounts.get(e.account_id)?.name}</td>
-                <td className="small">{catLabel(e.category)}{who ? <div>{partner ? <a href={`/admin/partners/${partner.id}`}><strong>{who}</strong></a> : <strong>{who}</strong>}{partner ? <span className="small muted"> · {partner.kind === "lab" ? "lab · معمل" : "clinic · عيادة"}</span> : null}</div> : null}</td>
+                <td className="small">{catLabel(e.category)}{who ? <div>{partner ? <a href={`/admin/partners/${partner.id}`}><strong>{who}</strong></a> : e.agent_id ? <a href={`/admin/statement?agent=${e.agent_id}`}><strong>{who}</strong></a> : <strong>{who}</strong>}{e.agent_id ? <span className="small muted"> · agent · مندوب</span> : null}{partner ? <span className="small muted"> · {partner.kind === "lab" ? "lab · معمل" : "clinic · عيادة"}</span> : null}</div> : null}</td>
                 <td className="small">{e.description}{e.reference ? <div className="muted">Ref. {e.reference}</div> : null}{e.voided && e.void_reason ? <div className="muted">Void: {e.void_reason}</div> : null}</td>
                 <td className="num nowrap" style={{ color: "#067647" }}>{e.direction === "in" ? fmt(Number(e.amount), e.currency) : ""}</td>
                 <td className="num nowrap" style={{ color: "#b42318" }}>{e.direction === "out" ? fmt(Number(e.amount), e.currency) : ""}</td>

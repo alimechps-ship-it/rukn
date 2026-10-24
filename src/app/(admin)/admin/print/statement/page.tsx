@@ -51,7 +51,7 @@ export default async function PrintStatement({ searchParams }: { searchParams: P
           {g.lines.map((l) => (
             <tr key={`${l.kind}-${l.doc_id}-${l.currency}`}>
               <td style={{ whiteSpace: "nowrap" }}>{fmtDay(l.date)}</td>
-              <td style={{ fontFamily: "ui-monospace, monospace", maxWidth: 260 }}><span style={{ whiteSpace: "nowrap" }}>{l.doc}</span><div style={{ fontFamily: "\"Inter Variable\", \"IBM Plex Sans Arabic\", sans-serif", fontSize: "8pt", color: "#526173", whiteSpace: "normal" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : l.kind === "journal" ? "Journal · قيد" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
+              <td style={{ fontFamily: "ui-monospace, monospace", maxWidth: 260 }}><span style={{ whiteSpace: "nowrap" }}>{l.doc}</span><div style={{ fontFamily: "\"Inter Variable\", \"IBM Plex Sans Arabic\", sans-serif", fontSize: "8pt", color: "#526173", whiteSpace: "normal" }}>{l.kind === "invoice" ? "Invoice · فاتورة" : l.kind === "journal" ? "Journal · قيد" : l.kind === "voucher" ? "Cash voucher · سند" : "Payment · سداد"}{l.note ? ` · ${l.note}` : ""}</div></td>
               <td>{l.code}<div style={{ fontSize: "8.5pt", color: "#526173" }}>{l.clinic}</div></td>
               <td className="num">{l.debit ? fmtMoney(l.debit, l.currency) : ""}</td>
               <td className="num">{l.credit ? fmtMoney(l.credit, l.currency) : ""}</td>

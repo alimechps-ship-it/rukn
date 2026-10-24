@@ -4,9 +4,10 @@ import { useMemo, useRef, useState } from "react";
 
 export type PickerPartner = { id: string; name: string; kind: string; contact: string | null; phone: string | null; city: string | null; currency: string; active: boolean };
 export type PickerPerson = { id: string; name: string };
+export type PickerAgent = { id: string; name: string; sub: string };
 export type PickerBill = { id: string; bill_no: string; partner_id: string; due: number; currency: string };
 
-type Opt = { key: string; type: "partner" | "person"; id: string; label: string; sub: string; badge: string; hay: string };
+type Opt = { key: string; type: "partner" | "person" | "agent"; id: string; label: string; sub: string; badge: string; hay: string };
 
 const KIND: Record<string, { en: string; ar: string }> = {
   lab: { en: "Lab", ar: "معمل" },
@@ -18,9 +19,9 @@ const norm = (s: string) => s.toLowerCase().replace(/[أإآ]/g, "ا").replace(/
  * Searchable party of a cash voucher: a lab, a clinic / planner, a team member or agent,
  * or a free-typed name. Posts party_user / partner_id / party_name (+ bill_id for a partner bill).
  */
-export function PartyPicker({ idp, direction, partners, people, bills = [], initial }: {
-  idp: string; direction: "in" | "out"; partners: PickerPartner[]; people: PickerPerson[]; bills?: PickerBill[];
-  initial?: { partner_id?: string | null; party_user?: string | null; party_name?: string | null };
+export function PartyPicker({ idp, direction, partners, people, agents = [], bills = [], initial }: {
+  idp: string; direction: "in" | "out"; partners: PickerPartner[]; people: PickerPerson[]; agents?: PickerAgent[]; bills?: PickerBill[];
+  initial?: { partner_id?: string | null; party_user?: string | null; party_name?: string | null; agent_id?: string | null };
 }) {
   const options = useMemo<Opt[]>(() => [
     ...partners.filter((p) => p.active || p.id === initial?.partner_id).map((p) => ({
@@ -28,10 +29,12 @@ export function PartyPicker({ idp, direction, partners, people, bills = [], init
       sub: [p.contact, p.phone, p.city].filter(Boolean).join(" · "), badge: `${KIND[p.kind]?.en ?? p.kind} · ${KIND[p.kind]?.ar ?? ""}`,
       hay: norm([p.name, p.contact, p.phone, p.city, KIND[p.kind]?.en, KIND[p.kind]?.ar, p.kind === "planner" ? "clinic doctor عياده دكتور طبيب" : "lab معمل"].filter(Boolean).join(" ")),
     })),
-    ...people.map((p) => ({ key: `u-${p.id}`, type: "person" as const, id: p.id, label: p.name, sub: "", badge: "Team / agent · فريق", hay: norm(p.name) })),
-  ], [partners, people, initial?.partner_id]);
+    ...agents.map((a) => ({ key: `a-${a.id}`, type: "agent" as const, id: a.id, label: a.name, sub: a.sub, badge: "Agent · مندوب", hay: norm(`${a.name} ${a.sub} agent مندوب`) })),
+    ...people.filter((p) => !agents.some((a) => a.id === p.id)).map((p) => ({ key: `u-${p.id}`, type: "person" as const, id: p.id, label: p.name, sub: "", badge: "Team · فريق", hay: norm(p.name) })),
+  ], [partners, people, agents, initial?.partner_id]);
 
-  const start = initial?.partner_id ? options.find((o) => o.type === "partner" && o.id === initial.partner_id)
+  const start = initial?.agent_id ? options.find((o) => o.type === "agent" && o.id === initial.agent_id)
+    : initial?.partner_id ? options.find((o) => o.type === "partner" && o.id === initial.partner_id)
     : initial?.party_user ? options.find((o) => o.type === "person" && o.id === initial.party_user) : undefined;
   const [picked, setPicked] = useState<Opt | undefined>(start);
   const [text, setText] = useState(start ? "" : initial?.party_name ?? "");
@@ -47,9 +50,10 @@ export function PartyPicker({ idp, direction, partners, people, bills = [], init
 
   return (
     <div className="field full party-picker" ref={box}>
-      <label htmlFor={`${idp}-party`}>Paid to / received from · الجهة (معمل، عيادة، شخص) — search · ابحث</label>
+      <label htmlFor={`${idp}-party`}>Paid to / received from · الجهة (مندوب، معمل، عيادة، شخص) — search · ابحث</label>
       <input type="hidden" name="partner_id" value={picked?.type === "partner" ? picked.id : ""} />
       <input type="hidden" name="party_user" value={picked?.type === "person" ? picked.id : ""} />
+      <input type="hidden" name="agent_id" value={picked?.type === "agent" ? picked.id : ""} />
       <input type="hidden" name="party_name" value={picked ? "" : text} />
       {picked ? (
         <div className="picked">
@@ -83,6 +87,11 @@ export function PartyPicker({ idp, direction, partners, people, bills = [], init
           {text && !list.length ? <span className="small muted">Not found — the typed name is saved as written.</span> : null}
         </div>
       )}
+      {picked?.type === "agent" ? (
+        <div className="small" style={{ marginTop: 6 }}>{direction === "out"
+          ? <>Recorded as <strong>paid to the agent {picked.label}</strong>: it appears in his account statement as a debit (مدين).</>
+          : <>Recorded as <strong>received from the agent {picked.label}</strong>: it appears in his account statement as a credit (دائن) and reduces what he owes.</>}</div>
+      ) : null}
       {picked?.type === "partner" ? (
         direction === "out" ? (
           <div className="small" style={{ marginTop: 6 }}>

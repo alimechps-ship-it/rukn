@@ -1271,6 +1271,33 @@ set role authenticated;
 select t.ok((select count(*) = 0 from public.case_payments where reference = 'ADV-1'), 'other agents do not');
 reset role;
 
+-- Cash vouchers with agents
+select t.login('00000000-0000-0000-0000-0000000000d1');
+set role authenticated;
+do $$ declare v_box uuid; v_id uuid; begin
+  select id into v_box from public.cash_accounts where name = 'FX test USD';
+  insert into public.cash_entries (account_id, direction, amount, currency, category, agent_id, description)
+  values (v_box, 'out', 25, 'USD', 'agent_payment', '00000000-0000-0000-0000-0000000000a1', 'Refund of overpayment') returning id into v_id;
+  perform t.ok((select party_name is not null and party_user is null from public.cash_entries where id = v_id), 'a payment voucher to an agent carries the agent as its party');
+  begin
+    insert into public.cash_entries (account_id, direction, amount, currency, category) values (v_box, 'out', 5, 'USD', 'agent_payment');
+    perform t.ok(false, 'agent voucher without agent must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'an agent voucher must name the agent'); end;
+  begin
+    insert into public.cash_entries (account_id, direction, amount, currency, category, agent_id) values (v_box, 'out', 5, 'USD', 'agent_payment', '00000000-0000-0000-0000-0000000000c1');
+    perform t.ok(false, 'non-agent must fail');
+  exception when invalid_parameter_value then perform t.ok(true, 'only agents can be the agent of a voucher'); end;
+end $$;
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a1');
+set role authenticated;
+select t.ok((select count(*) = 1 and bool_and(agent_id = '00000000-0000-0000-0000-0000000000a1') from public.cash_entries), 'the agent sees his own voucher (and no other cash movement)');
+reset role;
+select t.login('00000000-0000-0000-0000-0000000000a2');
+set role authenticated;
+select t.ok((select count(*) = 0 from public.cash_entries), 'another agent sees no vouchers');
+reset role;
+
 -- Last super administrator protection (deferred trigger → check immediately)
 begin;
 select t.login('00000000-0000-0000-0000-00000000000a');

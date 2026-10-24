@@ -98,6 +98,7 @@ Mapping to the suggested tables: `profiles`, `user_roles`, `site_settings` (+ `s
   - Payment and receipt vouchers have one searchable “Paid to / received from” field: type part of a lab or clinic name, contact, phone, city, the type (lab / معمل / clinic / عيادة) or a team member / agent; or keep a free-typed name.
   - A **payment voucher to a lab / clinic** is recorded as a partner payment `PP-` (optionally for one of its approved bills, which fills the amount), so it reduces what RUKN owes them and appears in their statement and portal.
   - A **receipt voucher from a lab / clinic** (money returned) uses the type “Returned by a lab / clinic”, counts in their balance and statement, and the partner can see / print it. Vouchers with partners do not appear in person accounts.
+  - **Vouchers with agents** (migration `20261024001800_cash_agents.sql`): agents appear in the party search marked *Agent*. A payment voucher to an agent is a **debit** and a receipt voucher from him a **credit** in his account statement (types “Paid to an agent” / “Received from an agent”); the agent sees and prints his own vouchers. Vouchers made earlier to a person who is an agent are linked to his account by the migration.
   - **Voucher search** on the cash page: voucher number, party, lab / clinic, description or reference.
 - **Journal entries · القيود** (migration `20261022001500_journal_entries.sql`, Finance → Journal entries): simple entries `JV-` — **one debit account, one credit account** (قيد بسيط), no cash movement, printable journal voucher with the amount in words.
   - Accounts: agents, labs / clinics, and general accounts (chart: 4100 other services revenue, 4200 discount earned, 4900 other income, 5100 discount allowed, 5200 other expenses, 5300 bad debts, 6100 currency differences, 3100 opening balances — finance can add / rename / close accounts). Each general account shows its balance and movements.
@@ -204,11 +205,11 @@ The alert contains only the type, service, country and a link to the admin — p
 
 ## 9. Tests
 
-- **Database permissions** (292 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
+- **Database permissions** (297 tests, allowed *and* denied cases for anonymous visitors, users without role, Sales, Content, Translator, Super Admin, inactive accounts, storage):
   `PGUSER=postgres npm run test:db` — needs a local PostgreSQL; it emulates the few Supabase objects it needs (`tests/db/shim.sql`).
 - **Payments on account / advances** (12 checks: balance banner, My account form, advance without a case, invoice notice from the account page, finance confirmation into a box, statement, receipt print): see `tests/e2e/account_payments_flow.py`.
 - **Journal entries** (18 checks: templates, discount on an invoice, discount earned, offset across currencies with edited rate, ledger account statement, agent statement & print, void): see `tests/e2e/journal_flow.py`.
-- **Cash vouchers with labs & clinics** (7 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.
+- **Cash vouchers with labs, clinics & agents** (11 checks: picker search, payment as PP-, refund, voucher search, partner balance & statement): see `tests/e2e/cash_partners_flow.py`.
 - **Exchange rates** (14 checks: automatic update, locked manual rate, transfers with automatic / edited rate / typed amount, access): see `tests/e2e/fx_flow.py` (run the app with `FX_API_URL=http://localhost:54400/fx` and the mock server).
 - **Case manager / finance separation** (23 checks: menus and pages denied to the case manager, dispatch order → finance queue → priced invoice, no amounts visible to operations): see `tests/e2e/dispatch_flow.py`. The money e2e tests sign in with `FINANCE_EMAIL` / `FINANCE_PASSWORD`.
 - **Agents/case workflow** (28 checks: agent isolation, numbering, approvals, prints, reports): see `tests/e2e/cases_flow.py`.

@@ -15,6 +15,7 @@ export const IN_CATEGORIES: Record<string, { en: string; ar: string }> = {
   advance_return: { en: "Custody / advance returned", ar: "رد عهدة أو سلفة" },
   other_income: { en: "Other income", ar: "إيراد آخر" },
   partner_refund: { en: "Returned by a lab / clinic", ar: "مرتجع من معمل أو عيادة" },
+  agent_receipt: { en: "Received from an agent", ar: "مقبوض من مندوب" },
 };
 export const OUT_CATEGORIES: Record<string, { en: string; ar: string }> = {
   withdrawal: { en: "Withdrawal (owner / partner)", ar: "مسحوبات (مالك أو شريك)" },
@@ -29,6 +30,7 @@ export const OUT_CATEGORIES: Record<string, { en: string; ar: string }> = {
   marketing: { en: "Marketing", ar: "تسويق" },
   fees: { en: "Bank & transfer fees", ar: "رسوم بنكية وتحويل" },
   other: { en: "Other expense", ar: "مصروف آخر" },
+  agent_payment: { en: "Paid to an agent", ar: "مصروف لمندوب" },
 };
 export const ALL_CATEGORIES: Record<string, { en: string; ar: string }> = {
   case_payment: { en: "Case payment", ar: "تحصيل حالة" },
@@ -138,7 +140,7 @@ export interface CashAccount { id: string; name: string; kind: string; currency:
 export interface CashEntry {
   id: string; entry_no: string; account_id: string; direction: "in" | "out"; amount: number; currency: string; entry_date: string; category: string;
   party_user: string | null; party_name: string | null; description: string | null; reference: string | null; case_id: string | null;
-  case_payment_id: string | null; transfer_group: string | null; partner_id: string | null; partner_payment_id: string | null; voided: boolean; void_reason: string | null; created_by: string | null; created_at: string;
+  case_payment_id: string | null; transfer_group: string | null; partner_id: string | null; partner_payment_id: string | null; agent_id?: string | null; voided: boolean; void_reason: string | null; created_by: string | null; created_at: string;
 }
 
 export async function accountsWithBalance(db: Db) {
@@ -199,7 +201,7 @@ export async function loadStatement(db: Db, accountId: string, from?: string, to
 
 /** Person accounts: what each person took from the boxes and what they returned. */
 export async function loadPeople(db: Db, from?: string, to?: string) {
-  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").is("partner_id", null).order("entry_date").order("created_at").limit(10000);
+  const { data } = await db.from("cash_entries").select("*").eq("voided", false).or("party_user.not.is.null,party_name.not.is.null").is("partner_id", null).is("agent_id", null).order("entry_date").order("created_at").limit(10000);
   const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : null;
   const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : null;
   const rows = ((data ?? []) as CashEntry[]).filter((e) => (!f || e.entry_date >= f) && (!t || e.entry_date <= t));
@@ -226,16 +228,20 @@ export function netMap(taken: Map<string, number>, returned: Map<string, number>
 
 /** Labs / clinics and their open approved bills, for the voucher party picker. */
 export async function voucherParties(db: Db) {
-  const [{ data: partners }, { data: bills }, { data: pays }] = await Promise.all([
+  const [{ data: partners }, { data: bills }, { data: pays }, { data: agentRoles }] = await Promise.all([
     db.from("partners").select("id,name,kind,contact_name,phone,city,currency,active").order("name"),
     db.from("partner_bills").select("id,bill_no,partner_id,total,currency").eq("status", "approved"),
     db.from("partner_payments").select("bill_id,amount,voided").not("bill_id", "is", null),
+    db.from("user_roles").select("user_id").eq("role", "agent"),
   ]);
+  const agentIds = (agentRoles ?? []).map((r) => r.user_id as string);
+  const { data: agentProfiles } = agentIds.length ? await db.from("profiles").select("id,full_name,email,organization,country,phone,is_active").in("id", agentIds) : { data: [] };
   const paid = new Map<string, number>();
   for (const p of pays ?? []) if (!p.voided) paid.set(p.bill_id as string, (paid.get(p.bill_id as string) ?? 0) + Number(p.amount));
   const credits = await docCredits(db, { billIds: (bills ?? []).map((b) => b.id as string) });
   for (const [k, v] of credits) paid.set(k, (paid.get(k) ?? 0) + v);
   return {
+    agents: (agentProfiles ?? []).filter((a) => a.is_active).map((a) => ({ id: a.id as string, name: (a.full_name || a.email) as string, sub: [a.organization, a.country, a.phone].filter(Boolean).join(" · ") })),
     partners: (partners ?? []).map((p) => ({ id: p.id as string, name: p.name as string, kind: p.kind as string, contact: (p.contact_name as string) ?? null, phone: (p.phone as string) ?? null, city: (p.city as string) ?? null, currency: p.currency as string, active: Boolean(p.active) })),
     bills: (bills ?? []).map((b) => ({ id: b.id as string, bill_no: b.bill_no as string, partner_id: b.partner_id as string, currency: b.currency as string, due: Math.round((Number(b.total) - (paid.get(b.id as string) ?? 0)) * 100) / 100 })).filter((b) => b.due > 0),
   };
